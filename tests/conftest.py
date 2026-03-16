@@ -10,6 +10,10 @@ import pytest
 
 @pytest.fixture
 def tmp_project(tmp_path: Path) -> Path:
+    """Create a temp project directory with a fake .git marker for project root detection.
+
+    NOT a real git repo — use git_project fixture when git commands need to work.
+    """
     project = tmp_path / "test-project"
     project.mkdir()
     (project / ".git").mkdir()
@@ -39,7 +43,13 @@ def git_project(tmp_path: Path) -> Path:
     (project / "file.py").write_text("hello\n")
     subprocess.run(["git", "add", "."], cwd=project, capture_output=True, check=True)
     subprocess.run(
-        ["git", "commit", "-m", "initial", "--no-gpg-sign"],
+        ["git", "config", "commit.gpgsign", "false"],
+        cwd=project,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],
         cwd=project,
         capture_output=True,
         check=True,

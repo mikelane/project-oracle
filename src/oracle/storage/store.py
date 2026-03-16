@@ -14,7 +14,14 @@ class OracleStore:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path))
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
         self._init_schema()
+
+    def __enter__(self) -> OracleStore:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
     def _init_schema(self) -> None:
         self._conn.executescript(
@@ -29,8 +36,9 @@ class OracleStore:
                 read_count  INTEGER DEFAULT 1
             );
 
+            -- git_state: forward declaration. Methods added by Task 5 (GitCache).
             CREATE TABLE IF NOT EXISTS git_state (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                id          INTEGER PRIMARY KEY,
                 branch      TEXT NOT NULL,
                 head_sha    TEXT NOT NULL,
                 dirty_files TEXT,
@@ -48,7 +56,7 @@ class OracleStore:
             );
 
             CREATE TABLE IF NOT EXISTS agent_log (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                id           INTEGER PRIMARY KEY,
                 session_id   TEXT NOT NULL,
                 tool_name    TEXT NOT NULL,
                 input        TEXT,
@@ -94,12 +102,13 @@ class OracleStore:
         self._conn.execute("DELETE FROM file_cache WHERE path = ?", (path,))
         self._conn.commit()
 
-    def update_disk_sha256(self, path: str, disk_sha256: str) -> None:
-        self._conn.execute(
+    def update_disk_sha256(self, path: str, disk_sha256: str) -> bool:
+        cursor = self._conn.execute(
             "UPDATE file_cache SET disk_sha256 = ? WHERE path = ?",
             (disk_sha256, path),
         )
         self._conn.commit()
+        return cursor.rowcount > 0
 
     def all_cached_paths(self) -> list[str]:
         rows = self._conn.execute("SELECT path FROM file_cache").fetchall()
@@ -172,6 +181,8 @@ class OracleStore:
             """,
             (session_id,),
         ).fetchone()
+        # SUM() on empty result returns NULL for all columns simultaneously,
+        # so checking one column is sufficient.
         if row is None or row["total_cache_hits"] is None:
             return {"total_cache_hits": 0, "total_tokens_saved": 0}
         return {

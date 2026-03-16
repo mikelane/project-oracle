@@ -20,6 +20,7 @@ def store(tmp_path: Path) -> Generator[OracleStore, None, None]:
     s.close()
 
 
+@pytest.mark.medium
 class DescribeOracleStoreInit:
     def it_creates_db_file_on_disk(self, tmp_path: Path) -> None:
         db_path = tmp_path / "nested" / "dir" / "oracle.db"
@@ -28,6 +29,14 @@ class DescribeOracleStoreInit:
             assert db_path.exists()
         finally:
             store.close()
+
+    def it_supports_context_manager(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "ctx.db"
+        with OracleStore(db_path) as store:
+            store.upsert_file_cache("a.py", b"a", "h1", None, 1000)
+        # Connection is closed after with-block; verify data persisted
+        with OracleStore(db_path) as store:
+            assert store.get_file_cache("a.py") is not None
 
     def it_is_idempotent(self, tmp_path: Path) -> None:
         db_path = tmp_path / "oracle.db"
@@ -66,6 +75,7 @@ class DescribeOracleStoreInit:
             store.close()
 
 
+@pytest.mark.medium
 class DescribeFileCacheOperations:
     def it_upserts_and_retrieves_entries(self, store: OracleStore) -> None:
         store.upsert_file_cache("src/main.py", b"print('hello')", "abc123", None, 1000)
@@ -100,10 +110,17 @@ class DescribeFileCacheOperations:
 
     def it_updates_disk_sha256(self, store: OracleStore) -> None:
         store.upsert_file_cache("src/main.py", b"data", "abc", None, 1000)
-        store.update_disk_sha256("src/main.py", "disk_hash_999")
+        updated = store.update_disk_sha256("src/main.py", "disk_hash_999")
+        assert updated is True
         result = store.get_file_cache("src/main.py")
         assert result is not None
         assert result["disk_sha256"] == "disk_hash_999"
+
+    def it_returns_false_when_updating_disk_sha256_for_missing_path(
+        self, store: OracleStore
+    ) -> None:
+        updated = store.update_disk_sha256("nonexistent.py", "some_hash")
+        assert updated is False
 
     def it_lists_all_cached_paths(self, store: OracleStore) -> None:
         store.upsert_file_cache("a.py", b"a", "h1", None, 1000)
@@ -113,6 +130,7 @@ class DescribeFileCacheOperations:
         assert sorted(paths) == ["a.py", "b.py", "c.py"]
 
 
+@pytest.mark.medium
 class DescribeCommandResults:
     def it_upserts_and_retrieves(self, store: OracleStore) -> None:
         store.upsert_command_result("git status", "clean", 0, "hash1", 5000)
@@ -128,6 +146,7 @@ class DescribeCommandResults:
         assert store.get_command_result("nonexistent") is None
 
 
+@pytest.mark.medium
 class DescribeAgentLog:
     def it_logs_and_queries_session_stats(self, store: OracleStore) -> None:
         store.log_interaction("sess-1", "oracle_read", "input1", True, 500, 1000)
@@ -150,6 +169,7 @@ class DescribeAgentLog:
         assert stats["total_tokens_saved"] == 0
 
 
+@pytest.mark.medium
 class DescribeEviction:
     def it_evicts_files_older_than_max_age(self, store: OracleStore) -> None:
         now = 1_000_000

@@ -38,6 +38,8 @@ packages = ["src/oracle"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+python_classes = ["Test*", "Describe*"]
+python_functions = ["test_*", "it_*"]
 
 [tool.coverage.run]
 branch = true

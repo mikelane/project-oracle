@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections.abc import Generator
 from pathlib import Path
 
@@ -143,6 +144,11 @@ class DescribeAgentLog:
         assert stats["total_cache_hits"] == 2
         assert stats["total_tokens_saved"] == 700
 
+    def it_returns_zero_stats_for_unknown_session(self, store: OracleStore) -> None:
+        stats = store.get_session_stats("nonexistent-session")
+        assert stats["total_cache_hits"] == 0
+        assert stats["total_tokens_saved"] == 0
+
 
 class DescribeEviction:
     def it_evicts_files_older_than_max_age(self, store: OracleStore) -> None:
@@ -168,6 +174,18 @@ class DescribeEviction:
         count = store.evict_stale_commands(max_age_hours=24, now=now)
         assert count == 1
         assert store.get_command_result("old cmd") is None
+
+    def it_evicts_stale_files_using_current_time_by_default(self, store: OracleStore) -> None:
+        old_ts = int(time.time()) - (31 * 86400)
+        store.upsert_file_cache("/old.py", b"old", "a", "a", old_ts)
+        count = store.evict_stale_files()
+        assert count == 1
+
+    def it_evicts_stale_commands_using_current_time_by_default(self, store: OracleStore) -> None:
+        old_ts = int(time.time()) - (25 * 3600)
+        store.upsert_command_result("old-cmd", "out", 0, "h1", old_ts)
+        count = store.evict_stale_commands()
+        assert count == 1
 
     def it_returns_count_of_evicted_entries(self, store: OracleStore) -> None:
         now = 1_000_000

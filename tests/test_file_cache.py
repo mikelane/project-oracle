@@ -148,6 +148,45 @@ class DescribeFileCacheTokenEstimate:
         _response, tokens_saved = cache.smart_read_with_stats(str(f))
         assert tokens_saved == 0
 
+    def it_returns_integer_token_estimates_on_cache_hit(
+        self, cache: FileCache, tmp_path: Path
+    ) -> None:
+        f = tmp_path / "int_tokens.py"
+        f.write_text("a" * 400)
+        cache.smart_read(str(f))
+        _, tokens_saved = cache.smart_read_with_stats(str(f))
+        assert isinstance(tokens_saved, int)
+
+    def it_returns_integer_token_estimates_on_delta(
+        self, cache: FileCache, tmp_path: Path
+    ) -> None:
+        f = tmp_path / "int_delta.py"
+        # Large file with many unique lines so the delta is small
+        lines = [f"def func_{i}(): return {i}" for i in range(200)]
+        f.write_text("\n".join(lines) + "\n")
+        cache.smart_read(str(f))
+        # Change only one line so delta is much smaller than full content
+        lines[0] = "def func_0(): return 'changed'"
+        f.write_text("\n".join(lines) + "\n")
+        _, tokens_saved = cache.smart_read_with_stats(str(f))
+        assert tokens_saved > 0, "tokens_saved must be positive to test the type"
+        assert isinstance(tokens_saved, int)
+
+    def it_reports_fewer_tokens_saved_for_delta_than_full_content(
+        self, cache: FileCache, tmp_path: Path
+    ) -> None:
+        f = tmp_path / "delta_tokens.py"
+        original = "line1\nline2\nline3\nline4\nline5\n" * 20
+        f.write_text(original)
+        first_result = cache.smart_read(str(f))
+        full_token_estimate = len(first_result) // 4
+
+        # Modify file slightly
+        f.write_text(original.replace("line3", "changed", 1))
+
+        _, tokens_saved = cache.smart_read_with_stats(str(f))
+        assert 0 < tokens_saved < full_token_estimate
+
 
 @pytest.mark.medium
 class DescribeFileCacheMarkStale:

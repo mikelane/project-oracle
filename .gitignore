@@ -18,5 +18,13 @@ build/
 .vscode/
 *.swp
 
+# Testing artifacts
+.coverage
+.coverage.*
+.hypothesis/
+.gremlins_cache/
+coverage/
+htmlcov/
+
 # Oracle runtime data
 .project-oracle/

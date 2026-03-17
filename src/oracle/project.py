@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from oracle.cache.command_cache import CommandCache  # type: ignore[import-untyped]
-    from oracle.cache.file_cache import FileCache  # type: ignore[import-untyped]
-    from oracle.cache.git_cache import GitCache  # type: ignore[import-untyped]
-    from oracle.integrations.chunkhound import ChunkhoundClient  # type: ignore[import-untyped]
+    from oracle.cache.command_cache import CommandCache
+    from oracle.cache.file_cache import FileCache
+    from oracle.cache.git_cache import GitCache
+    from oracle.integrations.chunkhound import ChunkhoundClient
     from oracle.storage.store import OracleStore
 
 PROJECT_MARKERS = (".git", "package.json", "pyproject.toml", "go.mod", "Cargo.toml")

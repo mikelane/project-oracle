@@ -1,0 +1,73 @@
+[project]
+name = "project-oracle"
+version = "0.1.0"
+description = "Stateful MCP server that reduces agent token usage via caching and delta diffing"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.0",
+    "anthropic>=0.40",
+    "zstandard>=0.23",
+    "watchfiles>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.14",
+    "pytest-gremlins>=1.5",
+    "pytest-test-categories>=1.2",
+    "coverage[toml]>=7.0",
+    "hypothesis>=6.100",
+    "behave>=1.2",
+    "ruff>=0.9",
+    "mypy>=1.14",
+]
+
+[project.scripts]
+project-oracle = "oracle.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oracle"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+python_classes = ["Test*", "Describe*"]
+python_functions = ["test_*", "it_*"]
+
+[tool.coverage.run]
+branch = true
+source = ["oracle"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]
+
+[tool.pytest-gremlins]
+paths = ["src"]
+cache = true
+workers = "auto"
+max-pardons-pct = 0.0
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

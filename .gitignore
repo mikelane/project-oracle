@@ -18,5 +18,24 @@ build/
 .vscode/
 *.swp
 
+# Testing artifacts
+.coverage
+.coverage.*
+.hypothesis/
+.gremlins_cache/
+coverage/
+htmlcov/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
 # Oracle runtime data
 .project-oracle/

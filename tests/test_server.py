@@ -593,6 +593,213 @@ class DescribeAgentLogging:
         _log(project, "oracle_read", "/some/path", False, 0)
 
 
+class DescribeOracleStatsTool:
+    """Test the oracle_stats tool function."""
+
+    def it_returns_error_when_no_current_project(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_stats
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_stats()
+        assert "no active project" in result.lower()
+
+    def it_returns_stats_for_active_project(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read, oracle_stats
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+        (project_dir / "main.py").write_text("x = 1\n")
+
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        oracle_read(str(project_dir / "main.py"))
+        result = oracle_stats()
+        assert "session" in result.lower()
+        assert "tool calls:" in result.lower()
+
+    def it_returns_error_when_store_is_none(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_stats
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+        # Set current to a project with store=None
+        project = ProjectState(
+            root=tmp_path,
+            stack=StackInfo(lang="python"),
+            store=None,
+        )
+        registry._current = project
+        result = oracle_stats()
+        assert "store not initialized" in result.lower()
+
+
+class DescribeOracleGrepPathConfinement:
+    """Test oracle_grep path confinement for non-default paths."""
+
+    def it_rejects_path_outside_project_root(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_grep, oracle_read
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+        (project_dir / "foo.py").write_text("x = 1\n")
+
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        oracle_read(str(project_dir / "foo.py"))
+        result = oracle_grep("pattern", "/etc")
+        assert "outside project root" in result.lower()
+
+    def it_returns_error_when_no_project_for_explicit_path(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_grep
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        bare_dir = tmp_path / "bare"
+        bare_dir.mkdir()
+
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_grep("pattern", str(bare_dir))
+        assert "no active project" in result.lower()
+
+
+class DescribeOracleStatusErrorPaths:
+    """Test oracle_status defensive error paths."""
+
+    def it_returns_error_when_git_cache_is_none(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_status
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+        # store=None prevents _ensure_caches from wiring git_cache
+        project = ProjectState(
+            root=tmp_path,
+            stack=StackInfo(lang="python"),
+            store=None,
+            git_cache=None,
+        )
+        registry._current = project
+        result = oracle_status()
+        assert "git cache not initialized" in result.lower()
+
+    def it_returns_error_when_store_is_none(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.cache.git_cache import GitCache
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_status
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        temp_store = OracleStore(oracle_dir / "projects" / "temp.db")
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+        project = ProjectState(
+            root=tmp_path,
+            stack=StackInfo(lang="python"),
+            store=None,
+            git_cache=GitCache(temp_store, tmp_path),
+        )
+        registry._current = project
+        result = oracle_status()
+        assert "store not initialized" in result.lower()
+
+
+class DescribeOracleRunDisallowedCommand:
+    """Test oracle_run with a disallowed command."""
+
+    def it_reports_disallowed_command_inline(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read, oracle_run
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+        (project_dir / "main.py").write_text("x = 1\n")
+
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        oracle_read(str(project_dir / "main.py"))
+        result = oracle_run(["curl https://evil.com"])
+        assert "command not allowed" in result.lower()
+
+
+class DescribeOracleForgetFileCacheNone:
+    """Test oracle_forget when file_cache is None."""
+
+    def it_returns_error_when_file_cache_not_initialized(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_forget
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+        (project_dir / "foo.py").write_text("x = 1\n")
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+        project = ProjectState(
+            root=project_dir,
+            stack=StackInfo(lang="python"),
+            store=None,
+        )
+        mocker.patch.object(registry, "for_path", return_value=project)
+        result = oracle_forget(str(project_dir / "foo.py"))
+        assert "file cache not initialized" in result.lower()
+
+
 class DescribeMainEntryPoint:
     """Test the main() entry point."""
 

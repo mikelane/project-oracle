@@ -93,8 +93,10 @@ def oracle_grep(pattern: str, path: str = ".") -> str:
 
     if path != ".":
         resolved_grep = Path(path).resolve()
-        project = _registry.current()
-        if project is not None and not resolved_grep.is_relative_to(project.root):
+        project = _registry.for_path(resolved_grep) or _registry.current()
+        if project is None:
+            return "Error: no active project. Call oracle_read first to detect a project."
+        if not resolved_grep.is_relative_to(project.root):
             return f"Error: path {path} is outside project root"
 
     result = handle_oracle_grep(pattern, path)

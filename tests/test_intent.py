@@ -71,6 +71,17 @@ class DescribeClassifyIntent:
     def it_defaults_to_code_understanding(self, question: str) -> None:
         assert classify_intent(question) == Intent.CODE_UNDERSTANDING
 
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "hello",
+            "greetings",
+            "42",
+        ],
+    )
+    def it_returns_unknown_for_unrecognized_questions(self, question: str) -> None:
+        assert classify_intent(question) == Intent.UNKNOWN
+
     def it_is_case_insensitive(self) -> None:
         assert classify_intent("WHAT CHANGED?") == Intent.GIT_STATUS
         assert classify_intent("Ready To Push?") == Intent.READINESS

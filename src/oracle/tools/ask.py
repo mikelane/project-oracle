@@ -10,6 +10,7 @@ import anthropic
 
 from oracle.intent import Intent, classify_intent
 from oracle.project import ProjectState
+from oracle.tools.grep import _SOURCE_GLOBS
 
 logger = logging.getLogger(__name__)
 
@@ -133,18 +134,16 @@ def _fallback_grep(question: str, root: Path) -> str:
     if not keywords:
         return f"No matches for question: {question}"
 
-    # Try each keyword
+    # Build include args once (reuse canonical glob list from grep module)
+    include_args: list[str] = []
+    for glob in _SOURCE_GLOBS:
+        include_args.extend(["--include", glob])
+
     all_results: list[str] = []
-    source_globs = ("*.py", "*.ts", "*.js", "*.go", "*.rs")
-
     for keyword in keywords[:3]:  # Limit to first 3 keywords
-        include_args: list[str] = []
-        for glob in source_globs:
-            include_args.extend(["--include", glob])
-
         try:
             result = subprocess.run(
-                ["grep", "-rn", *include_args, keyword, str(root)],
+                ["grep", "-rFn", *include_args, keyword, str(root)],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -159,13 +158,8 @@ def _fallback_grep(question: str, root: Path) -> str:
     if not all_results:
         return f"No matches for question: {question}"
 
-    # Deduplicate
-    seen: set[str] = set()
-    unique: list[str] = []
-    for line in all_results:
-        if line not in seen:
-            seen.add(line)
-            unique.append(line)
+    # Deduplicate preserving order
+    unique = list(dict.fromkeys(all_results))
 
     return f"{len(unique)} match(es):\n" + "\n".join(unique[:20])
 

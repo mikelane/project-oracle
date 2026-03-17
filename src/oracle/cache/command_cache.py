@@ -99,8 +99,13 @@ class CommandCache:
 
         # Run the command
         try:
+            args = shlex.split(command)
+        except ValueError as exc:
+            return f"Error: invalid command syntax: {exc}", False, 0
+
+        try:
             result = subprocess.run(
-                shlex.split(command),
+                args,
                 shell=False,
                 capture_output=True,
                 text=True,
@@ -109,6 +114,8 @@ class CommandCache:
             )
         except subprocess.TimeoutExpired:
             return f"Command timed out after {_COMMAND_TIMEOUT}s: {command}", False, 0
+        except OSError as exc:
+            return f"Error: failed to execute command: {exc}", False, 0
 
         # Combine stdout and stderr, cap at max output
         output = result.stdout

@@ -56,7 +56,10 @@ class FileCache:
         if file_size > _MAX_FILE_SIZE:
             return f"Error: file too large ({file_size:,} bytes, max {_MAX_FILE_SIZE:,})", 0
 
-        content = file_path.read_text()
+        try:
+            content = file_path.read_text()
+        except (UnicodeDecodeError, ValueError):
+            return f"Error: file is not valid UTF-8 text: {path}", 0
         content_hash = hashlib.sha256(content.encode()).hexdigest()
         now = int(time.time())
 

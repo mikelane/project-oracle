@@ -75,6 +75,16 @@ class CommandCache:
 
     def run_summarized(self, command: str) -> str:
         """Run a command if allowed, caching the result keyed by source file hash."""
+        output, _is_cache_hit, _tokens_saved = self.run_summarized_with_stats(command)
+        return output
+
+    def run_summarized_with_stats(self, command: str) -> tuple[str, bool, int]:
+        """Run a command if allowed, returning (output, is_cache_hit, tokens_saved).
+
+        On cache hit: is_cache_hit=True, tokens_saved=len(cached_output)//4.
+        On miss (fresh run): is_cache_hit=False, tokens_saved=0.
+        On CommandNotAllowedError: propagates (not caught).
+        """
         if not self.is_allowed(command):
             raise CommandNotAllowedError(f"Command not allowed: {command}")
 
@@ -86,8 +96,9 @@ class CommandCache:
         if cached is not None and cached["input_hash"] == input_hash:
             ran_at = int(cached["ran_at"])  # type: ignore[call-overload]
             elapsed = now - ran_at
-            output = str(cached["output"])
-            return f"Cached result ({_format_elapsed(elapsed)} ago):\n{output}"
+            cached_output = str(cached["output"])
+            tokens_saved = len(cached_output) // 4
+            return f"Cached result ({_format_elapsed(elapsed)} ago):\n{cached_output}", True, tokens_saved
 
         # Run the command
         try:
@@ -100,7 +111,7 @@ class CommandCache:
                 cwd=self._project_root,
             )
         except subprocess.TimeoutExpired:
-            return f"Command timed out after {_COMMAND_TIMEOUT}s: {command}"
+            return f"Command timed out after {_COMMAND_TIMEOUT}s: {command}", False, 0
 
         # Combine stdout and stderr, cap at max output
         output = result.stdout
@@ -111,7 +122,7 @@ class CommandCache:
         # Store in cache
         self._store.upsert_command_result(command, output, result.returncode, input_hash, now)
 
-        return output
+        return output, False, 0
 
     def _hash_source_files(self) -> str:
         """SHA256 of mtime_ns for all source files, skipping .venv and node_modules."""

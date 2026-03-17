@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import uuid
 from pathlib import Path
 
 from oracle.project import ProjectState, detect_project_root, detect_stack
@@ -16,6 +17,11 @@ class ProjectRegistry:
         self._oracle_dir = oracle_dir
         self._projects: dict[Path, ProjectState] = {}
         self._current: ProjectState | None = None
+        self._session_id = uuid.uuid4().hex[:12]
+
+    @property
+    def session_id(self) -> str:
+        return self._session_id
 
     def for_path(self, path: Path) -> ProjectState | None:
         """Detect project root for path, return cached or new ProjectState."""
@@ -39,6 +45,7 @@ class ProjectRegistry:
             stack=stack,
             project_id=project_id,
             store=store,
+            session_id=self._session_id,
         )
         self._projects[root] = project
         self._current = project

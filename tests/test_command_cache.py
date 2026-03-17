@@ -341,3 +341,30 @@ class DescribeSourceFileHashing:
         hash2 = cache._hash_source_files()
         assert hash1 == hash2
         assert len(hash1) == 16
+
+
+@pytest.mark.medium
+class DescribeCommandCacheStats:
+    def it_reports_cache_miss_on_first_run(self, cache: CommandCache) -> None:
+        output, is_cache_hit, tokens_saved = cache.run_summarized_with_stats("echo first-run")
+        assert "first-run" in output
+        assert is_cache_hit is False
+        assert tokens_saved == 0
+
+    def it_reports_cache_hit_when_hash_unchanged(self, cache: CommandCache) -> None:
+        cache.run_summarized_with_stats("echo cache-hit-test")
+        output, is_cache_hit, tokens_saved = cache.run_summarized_with_stats("echo cache-hit-test")
+        assert "cache-hit-test" in output
+        assert is_cache_hit is True
+        assert tokens_saved > 0
+
+    def it_estimates_tokens_saved_from_cached_output(self, cache: CommandCache) -> None:
+        cache.run_summarized_with_stats("echo token-estimate")
+        _, _, tokens_saved = cache.run_summarized_with_stats("echo token-estimate")
+        # The cached output is "token-estimate\n"; tokens_saved = len(cached_output) // 4
+        # We just verify it's a reasonable positive number correlated with output length
+        assert tokens_saved >= 1
+
+    def it_reports_zero_tokens_on_fresh_run(self, cache: CommandCache) -> None:
+        _, _, tokens_saved = cache.run_summarized_with_stats("echo fresh-run")
+        assert tokens_saved == 0

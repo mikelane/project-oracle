@@ -56,11 +56,22 @@ class GitCache:
         Subsequent calls: return only what changed.
         If nothing changed: "No changes since last check".
         """
+        delta_text, _is_cache_hit, _tokens_saved = self.get_delta_with_stats()
+        return delta_text
+
+    def get_delta_with_stats(self) -> tuple[str, bool, int]:
+        """Compare current state against last snapshot, returning (delta_text, is_cache_hit, tokens_saved).
+
+        First call (no previous snapshot): return full formatted snapshot, is_cache_hit=False, tokens_saved=0.
+        Subsequent calls with changes: return delta, is_cache_hit=False, tokens_saved=0.
+        Subsequent calls without changes: return "No changes since last check",
+            is_cache_hit=True, tokens_saved=len(full_format)//4.
+        """
         current = self._capture_current()
 
         if self._last_snapshot is None:
             self._last_snapshot = current
-            return self._format_full(current)
+            return self._format_full(current), False, 0
 
         changes: list[str] = []
 
@@ -100,9 +111,10 @@ class GitCache:
         self._last_snapshot = current
 
         if not changes:
-            return "No changes since last check"
+            tokens_saved = len(self._format_full(current)) // 4
+            return "No changes since last check", True, tokens_saved
 
-        return "\n".join(changes)
+        return "\n".join(changes), False, 0
 
     def _capture_current(self) -> GitSnapshot:
         """Capture current git state without storing it."""

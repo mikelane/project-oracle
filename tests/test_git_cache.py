@@ -298,3 +298,42 @@ class DescribeGitCache:
         assert "Dirty files:" not in formatted
         assert "Staged files:" not in formatted
         assert "Log:" not in formatted
+
+
+@pytest.mark.medium
+class DescribeGitCacheStats:
+    def it_reports_cache_miss_on_first_call(self, git_project: Path, tmp_path: Path) -> None:
+        store = OracleStore(tmp_path / "oracle.db")
+        cache = GitCache(store=store, project_root=git_project)
+        text, is_cache_hit, tokens_saved = cache.get_delta_with_stats()
+        assert "Branch:" in text
+        assert is_cache_hit is False
+        assert tokens_saved == 0
+
+    def it_reports_cache_hit_when_unchanged(self, git_project: Path, tmp_path: Path) -> None:
+        store = OracleStore(tmp_path / "oracle.db")
+        cache = GitCache(store=store, project_root=git_project)
+        cache.get_delta_with_stats()  # first call seeds the snapshot
+        text, is_cache_hit, tokens_saved = cache.get_delta_with_stats()
+        assert text == "No changes since last check"
+        assert is_cache_hit is True
+        assert tokens_saved > 0
+
+    def it_estimates_tokens_saved_on_hit(self, git_project: Path, tmp_path: Path) -> None:
+        store = OracleStore(tmp_path / "oracle.db")
+        cache = GitCache(store=store, project_root=git_project)
+        first_text, _, _ = cache.get_delta_with_stats()  # full snapshot
+        _, _, tokens_saved = cache.get_delta_with_stats()  # cache hit
+        expected_tokens = len(first_text) // 4
+        assert tokens_saved == expected_tokens
+
+    def it_reports_zero_tokens_on_miss(self, git_project: Path, tmp_path: Path) -> None:
+        store = OracleStore(tmp_path / "oracle.db")
+        cache = GitCache(store=store, project_root=git_project)
+        _, _, tokens_saved_first = cache.get_delta_with_stats()
+        assert tokens_saved_first == 0
+        # Make a change so second call is also a miss
+        (git_project / "new_file.txt").write_text("new\n")
+        _, is_cache_hit, tokens_saved_change = cache.get_delta_with_stats()
+        assert is_cache_hit is False
+        assert tokens_saved_change == 0

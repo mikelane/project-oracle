@@ -104,6 +104,51 @@ class DescribeProjectRegistry:
         assert project2 is not None
         assert project2.project_id == project1.project_id
 
+    def it_assigns_non_empty_session_id_to_project(
+        self, tmp_project: Path, oracle_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+
+        registry = ProjectRegistry(oracle_dir)
+        result = registry.for_path(tmp_project / "src" / "main.py")
+
+        assert result is not None
+        assert result.session_id != ""
+        assert len(result.session_id) == 12
+
+    def it_uses_same_session_id_for_all_projects(
+        self, tmp_project: Path, tmp_path: Path, oracle_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+
+        # Create a second project root
+        second_root = tmp_path / "second-project"
+        second_root.mkdir()
+        (second_root / "pyproject.toml").write_text("[project]\nname = 'second'\n")
+
+        registry = ProjectRegistry(oracle_dir)
+        p1 = registry.for_path(tmp_project / "src" / "main.py")
+        p2 = registry.for_path(second_root / "pyproject.toml")
+
+        assert p1 is not None
+        assert p2 is not None
+        assert p1.session_id == p2.session_id
+
+    def it_generates_different_session_id_per_registry_instance(
+        self, tmp_project: Path, oracle_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+
+        r1 = ProjectRegistry(oracle_dir)
+        r2 = ProjectRegistry(oracle_dir)
+
+        p1 = r1.for_path(tmp_project / "src" / "main.py")
+        p2 = r2.for_path(tmp_project / "src" / "main.py")
+
+        assert p1 is not None
+        assert p2 is not None
+        assert r1.session_id != r2.session_id
+
     def it_creates_nested_project_directory_from_scratch(
         self, tmp_project: Path, tmp_path: Path
     ) -> None:

@@ -15,8 +15,8 @@ from oracle.cache.command_cache import (
     DEFAULT_ALLOWLIST,
     CommandCache,
     CommandNotAllowedError,
-    _format_elapsed,
 )
+from oracle.formatting import format_elapsed
 from oracle.storage.store import OracleStore
 
 
@@ -68,7 +68,7 @@ class DescribeFormatElapsed:
         ],
     )
     def it_formats_elapsed_time(self, seconds: int, expected: str) -> None:
-        assert _format_elapsed(seconds) == expected
+        assert format_elapsed(seconds) == expected
 
 
 @pytest.mark.small

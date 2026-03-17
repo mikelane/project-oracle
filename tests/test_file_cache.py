@@ -34,9 +34,9 @@ class DescribeFormatElapsed:
         ],
     )
     def it_formats_elapsed_time(self, seconds: int, expected: str) -> None:
-        from oracle.cache.file_cache import _format_elapsed
+        from oracle.formatting import format_elapsed
 
-        assert _format_elapsed(seconds) == expected
+        assert format_elapsed(seconds) == expected
 
 
 class DescribeComputeDelta:

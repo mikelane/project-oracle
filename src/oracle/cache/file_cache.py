@@ -9,6 +9,7 @@ from pathlib import Path
 
 import zstandard as zstd
 
+from oracle.formatting import format_elapsed
 from oracle.storage.store import OracleStore
 
 
@@ -24,15 +25,6 @@ def _compute_delta(old: str, new: str) -> str:
     # Skip the first two lines (--- and +++ headers)
     filtered = diff_lines[2:] if len(diff_lines) >= 2 else diff_lines
     return "".join(filtered)
-
-
-def _format_elapsed(seconds: int) -> str:
-    """Format elapsed seconds as a human-readable string."""
-    if seconds >= 3600:
-        return f"{seconds // 3600}h"
-    if seconds >= 60:
-        return f"{seconds // 60}m"
-    return f"{seconds}s"
 
 
 class FileCache:
@@ -81,7 +73,7 @@ class FileCache:
                 now,
             )
             tokens_saved = len(content) // 4
-            return f"No changes since last read ({_format_elapsed(elapsed)} ago)", tokens_saved
+            return f"No changes since last read ({format_elapsed(elapsed)} ago)", tokens_saved
 
         # Changed: compute delta
         old_content = self._decompressor.decompress(cached_content).decode()

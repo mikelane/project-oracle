@@ -71,7 +71,7 @@ def _test_status(project: ProjectState) -> str:
     """Report test status from command cache or stack info."""
     if project.stack.test_cmd:
         if project.command_cache is not None:
-            cached = project.command_cache._store.get_command_result(project.stack.test_cmd)
+            cached = project.command_cache.get_cached_result(project.stack.test_cmd)
             if cached is not None:
                 return f"Last {project.stack.test_cmd} result:\n{cached['output']}"
         return (

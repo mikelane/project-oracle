@@ -8,6 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from oracle.formatting import format_elapsed
 from oracle.storage.store import OracleStore
 
 DEFAULT_ALLOWLIST: tuple[str, ...] = (
@@ -40,15 +41,6 @@ class CommandNotAllowedError(Exception):
     """Raised when a command is not on the allowlist or contains shell injection."""
 
 
-def _format_elapsed(seconds: int) -> str:
-    """Format elapsed seconds as a human-readable string."""
-    if seconds >= 3600:
-        return f"{seconds // 3600}h"
-    if seconds >= 60:
-        return f"{seconds // 60}m"
-    return f"{seconds}s"
-
-
 class CommandCache:
     """Cache command results, keyed by command + source file hash. Rejects disallowed commands."""
 
@@ -72,6 +64,10 @@ class CommandCache:
         if not cmd_parts:
             return False
         return any(command.strip().startswith(prefix) for prefix in self._allowlist)
+
+    def get_cached_result(self, command: str) -> dict[str, object] | None:
+        """Return the cached result for a command, or None if not cached."""
+        return self._store.get_command_result(command)
 
     def run_summarized(self, command: str) -> str:
         """Run a command if allowed, caching the result keyed by source file hash."""
@@ -98,7 +94,7 @@ class CommandCache:
             elapsed = now - ran_at
             cached_output = str(cached["output"])
             tokens_saved = len(cached_output) // 4
-            text = f"Cached result ({_format_elapsed(elapsed)} ago):\n{cached_output}"
+            text = f"Cached result ({format_elapsed(elapsed)} ago):\n{cached_output}"
             return text, True, tokens_saved
 
         # Run the command
@@ -128,23 +124,17 @@ class CommandCache:
     def _hash_source_files(self) -> str:
         """SHA256 of mtime_ns for all source files, skipping .venv and node_modules."""
         hasher = hashlib.sha256()
-        source_files: list[Path] = []
 
         for path in sorted(self._project_root.rglob("*")):
             try:
-                is_file = path.is_file()
+                if not path.is_file():
+                    continue
             except OSError:
-                continue
-            if not is_file:
                 continue
             if path.suffix not in _SOURCE_EXTENSIONS:
                 continue
-            # Skip excluded directories
             if any(skip in path.parts for skip in _SKIP_DIRS):
                 continue
-            source_files.append(path)
-
-        for path in source_files:
             try:
                 hasher.update(f"{path}:{path.stat().st_mtime_ns}".encode())
             except OSError:

@@ -5,9 +5,9 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_mock import MockerFixture
 
 from oracle.cache.command_cache import CommandCache
 from oracle.cache.file_cache import FileCache
@@ -118,11 +118,13 @@ class DescribeOracleAsk:
         assert "hello" in result.lower() or "no matches" in result.lower()
 
     @pytest.mark.asyncio
-    async def it_uses_chunkhound_when_available(self, mock_project: ProjectState) -> None:
+    async def it_uses_chunkhound_when_available(
+        self, mock_project: ProjectState, mocker: MockerFixture
+    ) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
-        mock_ch = AsyncMock(spec=ChunkhoundClient)
-        mock_ch.search = AsyncMock(return_value=[
+        mock_ch = mocker.AsyncMock(spec=ChunkhoundClient)
+        mock_ch.search = mocker.AsyncMock(return_value=[
             {"file": "auth.py", "snippet": "def authenticate(user):"},
         ])
         mock_project.chunkhound = mock_ch
@@ -133,12 +135,12 @@ class DescribeOracleAsk:
 
     @pytest.mark.asyncio
     async def it_falls_back_to_grep_when_chunkhound_returns_empty(
-        self, mock_project: ProjectState
+        self, mock_project: ProjectState, mocker: MockerFixture
     ) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
-        mock_ch = AsyncMock(spec=ChunkhoundClient)
-        mock_ch.search = AsyncMock(return_value=[])
+        mock_ch = mocker.AsyncMock(spec=ChunkhoundClient)
+        mock_ch.search = mocker.AsyncMock(return_value=[])
         mock_project.chunkhound = mock_ch
 
         result = await handle_oracle_ask("where is the hello function?", mock_project)
@@ -167,47 +169,44 @@ class DescribeOracleAsk:
 
     @pytest.mark.asyncio
     async def it_uses_haiku_fallback_for_unknown_intent(
-        self, mock_project: ProjectState
+        self, mock_project: ProjectState, mocker: MockerFixture
     ) -> None:
+        from oracle.intent import Intent
         from oracle.tools.ask import handle_oracle_ask
 
-        # Patch classify_intent to return UNKNOWN for this question
-        with patch("oracle.tools.ask.classify_intent") as mock_classify:
-            from oracle.intent import Intent
+        mock_classify = mocker.patch("oracle.tools.ask.classify_intent")
+        mock_classify.return_value = Intent.UNKNOWN
 
-            mock_classify.return_value = Intent.UNKNOWN
+        # Patch the anthropic client to avoid real API calls
+        mock_client = mocker.MagicMock()
+        mock_message = mocker.MagicMock()
+        mock_message.content = [mocker.MagicMock(text="The answer is 42")]
+        mock_client.messages.create.return_value = mock_message
 
-            # Patch the anthropic client to avoid real API calls
-            mock_client = MagicMock()
-            mock_message = MagicMock()
-            mock_message.content = [MagicMock(text="The answer is 42")]
-            mock_client.messages.create.return_value = mock_message
-
-            with patch("oracle.tools.ask.anthropic.Anthropic", return_value=mock_client):
-                result = await handle_oracle_ask(
-                    "what is the meaning of life?", mock_project
-                )
-                assert "42" in result
+        mocker.patch("oracle.tools.ask.anthropic.Anthropic", return_value=mock_client)
+        result = await handle_oracle_ask(
+            "what is the meaning of life?", mock_project
+        )
+        assert "42" in result
 
     @pytest.mark.asyncio
     async def it_returns_error_when_haiku_sdk_not_configured(
-        self, mock_project: ProjectState
+        self, mock_project: ProjectState, mocker: MockerFixture
     ) -> None:
+        from oracle.intent import Intent
         from oracle.tools.ask import handle_oracle_ask
 
-        with patch("oracle.tools.ask.classify_intent") as mock_classify:
-            from oracle.intent import Intent
+        mock_classify = mocker.patch("oracle.tools.ask.classify_intent")
+        mock_classify.return_value = Intent.UNKNOWN
 
-            mock_classify.return_value = Intent.UNKNOWN
-
-            with patch(
-                "oracle.tools.ask.anthropic.Anthropic",
-                side_effect=Exception("API key not set"),
-            ):
-                result = await handle_oracle_ask(
-                    "what is the meaning of life?", mock_project
-                )
-                assert "unable" in result.lower() or "error" in result.lower()
+        mocker.patch(
+            "oracle.tools.ask.anthropic.Anthropic",
+            side_effect=Exception("API key not set"),
+        )
+        result = await handle_oracle_ask(
+            "what is the meaning of life?", mock_project
+        )
+        assert "unable" in result.lower() or "error" in result.lower()
 
 
 class DescribeProjectOverview:
@@ -349,15 +348,17 @@ class DescribeFallbackGrep:
 
     @pytest.mark.asyncio
     @pytest.mark.medium
-    async def it_handles_grep_timeout(self, mock_project: ProjectState) -> None:
+    async def it_handles_grep_timeout(
+        self, mock_project: ProjectState, mocker: MockerFixture
+    ) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
-        with patch(
+        mocker.patch(
             "oracle.tools.ask.subprocess.run",
             side_effect=subprocess.TimeoutExpired("grep", 10),
-        ):
-            result = await handle_oracle_ask("where is xyznonexistent?", mock_project)
-            assert "no matches" in result.lower()
+        )
+        result = await handle_oracle_ask("where is xyznonexistent?", mock_project)
+        assert "no matches" in result.lower()
 
     @pytest.mark.asyncio
     @pytest.mark.medium
@@ -391,36 +392,38 @@ class DescribeFallbackGrep:
 
     @pytest.mark.asyncio
     @pytest.mark.medium
-    async def it_handles_grep_with_nonzero_returncode(self, mock_project: ProjectState) -> None:
+    async def it_handles_grep_with_nonzero_returncode(
+        self, mock_project: ProjectState, mocker: MockerFixture
+    ) -> None:
         """Grep returning nonzero (no match) produces no results for that keyword."""
         from oracle.tools.ask import handle_oracle_ask
 
         # Mock grep to return returncode=1 (no matches) with empty stdout
-        mock_result = MagicMock()
+        mock_result = mocker.MagicMock()
         mock_result.returncode = 1
         mock_result.stdout = ""
-        with patch("oracle.tools.ask.subprocess.run", return_value=mock_result):
-            result = await handle_oracle_ask(
-                "explain xyznonexistent logic", mock_project
-            )
-            assert "no matches" in result.lower()
+        mocker.patch("oracle.tools.ask.subprocess.run", return_value=mock_result)
+        result = await handle_oracle_ask(
+            "explain xyznonexistent logic", mock_project
+        )
+        assert "no matches" in result.lower()
 
     @pytest.mark.asyncio
     @pytest.mark.medium
     async def it_handles_grep_with_zero_returncode_but_empty_stdout(
-        self, mock_project: ProjectState
+        self, mock_project: ProjectState, mocker: MockerFixture
     ) -> None:
         """Grep returning 0 but empty stdout produces no results."""
         from oracle.tools.ask import handle_oracle_ask
 
-        mock_result = MagicMock()
+        mock_result = mocker.MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "   "  # Whitespace only
-        with patch("oracle.tools.ask.subprocess.run", return_value=mock_result):
-            result = await handle_oracle_ask(
-                "explain xyznonexistent logic", mock_project
-            )
-            assert "no matches" in result.lower()
+        mocker.patch("oracle.tools.ask.subprocess.run", return_value=mock_result)
+        result = await handle_oracle_ask(
+            "explain xyznonexistent logic", mock_project
+        )
+        assert "no matches" in result.lower()
 
 
 class DescribeFallbackGrepUnit:
@@ -510,21 +513,22 @@ class DescribeFallbackGrepUnit:
 
 class DescribeHaikuFallback:
     @pytest.mark.asyncio
-    async def it_handles_empty_haiku_response(self, mock_project: ProjectState) -> None:
+    async def it_handles_empty_haiku_response(
+        self, mock_project: ProjectState, mocker: MockerFixture
+    ) -> None:
+        from oracle.intent import Intent
         from oracle.tools.ask import handle_oracle_ask
 
-        with patch("oracle.tools.ask.classify_intent") as mock_classify:
-            from oracle.intent import Intent
+        mock_classify = mocker.patch("oracle.tools.ask.classify_intent")
+        mock_classify.return_value = Intent.UNKNOWN
 
-            mock_classify.return_value = Intent.UNKNOWN
+        mock_client = mocker.MagicMock()
+        mock_message = mocker.MagicMock()
+        mock_message.content = []  # Empty content
+        mock_client.messages.create.return_value = mock_message
 
-            mock_client = MagicMock()
-            mock_message = MagicMock()
-            mock_message.content = []  # Empty content
-            mock_client.messages.create.return_value = mock_message
-
-            with patch("oracle.tools.ask.anthropic.Anthropic", return_value=mock_client):
-                result = await handle_oracle_ask(
-                    "what is the meaning of life?", mock_project
-                )
-                assert "unable" in result.lower()
+        mocker.patch("oracle.tools.ask.anthropic.Anthropic", return_value=mock_client)
+        result = await handle_oracle_ask(
+            "what is the meaning of life?", mock_project
+        )
+        assert "unable" in result.lower()

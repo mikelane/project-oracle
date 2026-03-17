@@ -5,7 +5,6 @@ from behave import given, then, when
 from oracle.cache.file_cache import FileCache
 from oracle.storage.store import OracleStore
 from oracle.tools.forget import handle_oracle_forget
-from oracle.tools.read import handle_oracle_read
 
 
 def _get_or_create_cache(context):
@@ -49,7 +48,7 @@ def step_file_modified(context, path, content):
 def step_oracle_read(context, path):
     cache = _get_or_create_cache(context)
     file_path = str(context.project_root / path)
-    context.last_response = handle_oracle_read(file_path, cache)
+    context.last_response = cache.smart_read(file_path)
 
 
 @when('the agent calls oracle_forget on "{path}"')

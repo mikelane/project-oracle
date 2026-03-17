@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
+from pytest_mock import MockerFixture
 
 from oracle.tools.grep import handle_oracle_grep
 
@@ -56,16 +56,16 @@ class DescribeOracleGrep:
         result = handle_oracle_grep("pattern", missing)
         assert "No matches" in result
 
-    def it_handles_grep_timeout(self, tmp_path: Path) -> None:
+    def it_handles_grep_timeout(self, tmp_path: Path, mocker: MockerFixture) -> None:
         (tmp_path / "file.py").write_text("content\n")
-        with patch("oracle.tools.grep.subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd="grep", timeout=30)
-            result = handle_oracle_grep("content", str(tmp_path))
-            assert "No matches" in result
+        mock_run = mocker.patch("oracle.tools.grep.subprocess.run")
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="grep", timeout=30)
+        result = handle_oracle_grep("content", str(tmp_path))
+        assert "Error: grep failed" in result
 
-    def it_handles_oserror(self, tmp_path: Path) -> None:
+    def it_handles_oserror(self, tmp_path: Path, mocker: MockerFixture) -> None:
         (tmp_path / "file.py").write_text("content\n")
-        with patch("oracle.tools.grep.subprocess.run") as mock_run:
-            mock_run.side_effect = OSError("grep not found")
-            result = handle_oracle_grep("content", str(tmp_path))
-            assert "No matches" in result
+        mock_run = mocker.patch("oracle.tools.grep.subprocess.run")
+        mock_run.side_effect = OSError("grep not found")
+        result = handle_oracle_grep("content", str(tmp_path))
+        assert "Error: grep failed" in result

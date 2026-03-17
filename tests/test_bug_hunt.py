@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
+from pytest_mock import MockerFixture
 
 from oracle.storage.store import OracleStore
 
@@ -19,7 +19,7 @@ class DescribeOracleStatusCacheHitLogging:
     even on the very first call. This inflates token savings stats."""
 
     def it_reports_cache_miss_on_first_oracle_status_call(
-        self, git_project: Path, tmp_path: Path
+        self, git_project: Path, tmp_path: Path, mocker: MockerFixture
     ) -> None:
         """The very first oracle_status call returns fresh data — it is NOT a cache hit.
         But the current code logs it as a hit because refresh() poisons the delta check."""
@@ -33,30 +33,30 @@ class DescribeOracleStatusCacheHitLogging:
 
         registry = ProjectRegistry(oracle_dir)
 
-        with patch("oracle.server._registry", registry):
-            # First, read a file so registry.current() is set
-            from oracle.server import oracle_read
+        mocker.patch("oracle.server._registry", registry)
+        # First, read a file so registry.current() is set
+        from oracle.server import oracle_read
 
-            oracle_read(str(git_project / "file.py"))
+        oracle_read(str(git_project / "file.py"))
 
-            project = registry.current()
-            assert project is not None
-            assert project.store is not None
+        project = registry.current()
+        assert project is not None
+        assert project.store is not None
 
-            # Now call oracle_status for the first time
-            oracle_status()
+        # Now call oracle_status for the first time
+        oracle_status()
 
-            # Check the agent_log — the oracle_status entry should be a cache miss
-            rows = project.store._conn.execute(
-                "SELECT * FROM agent_log WHERE tool_name = 'oracle_status'"
-            ).fetchall()
-            assert len(rows) >= 1
-            # BUG: This assertion will fail because the code always logs cache_hit=1
-            # due to refresh() being called before get_delta_with_stats()
-            assert rows[0]["cache_hit"] == 0, (
-                "First oracle_status call should be a cache miss, "
-                f"but got cache_hit={rows[0]['cache_hit']}"
-            )
+        # Check the agent_log — the oracle_status entry should be a cache miss
+        rows = project.store._conn.execute(
+            "SELECT * FROM agent_log WHERE tool_name = 'oracle_status'"
+        ).fetchall()
+        assert len(rows) >= 1
+        # BUG: This assertion will fail because the code always logs cache_hit=1
+        # due to refresh() being called before get_delta_with_stats()
+        assert rows[0]["cache_hit"] == 0, (
+            "First oracle_status call should be a cache miss, "
+            f"but got cache_hit={rows[0]['cache_hit']}"
+        )
 
 
 @pytest.mark.medium
@@ -97,7 +97,7 @@ class DescribeCommandCacheHashRaceCondition:
     If a file is deleted between collection and stat, FileNotFoundError crashes the hash."""
 
     def it_handles_file_deleted_between_rglob_and_stat(
-        self, tmp_path: Path
+        self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
         from oracle.cache.command_cache import CommandCache
 
@@ -120,9 +120,9 @@ class DescribeCommandCacheHashRaceCondition:
                 raise FileNotFoundError(f"No such file: {self_path}")
             return original_stat(self_path, *args, **kwargs)
 
-        with patch.object(Path, "stat", flaky_stat):
-            # BUG: This crashes with FileNotFoundError
-            result = cache._hash_source_files()
-            # Should return a valid hash (just skipping the missing file)
-            assert isinstance(result, str)
-            assert len(result) == 16
+        mocker.patch.object(Path, "stat", flaky_stat)
+        # BUG: This crashes with FileNotFoundError
+        result = cache._hash_source_files()
+        # Should return a valid hash (just skipping the missing file)
+        assert isinstance(result, str)
+        assert len(result) == 16

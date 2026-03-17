@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
 
 import pytest
+from pytest_mock import MockerFixture
 from watchfiles import Change
 
 from oracle.watcher import OracleWatcher, _source_filter
@@ -41,55 +41,57 @@ async def _fake_awatch(
 
 @pytest.mark.medium
 class DescribeOracleWatcher:
-    def it_dispatches_callbacks_for_detected_changes(self) -> None:
+    def it_dispatches_callbacks_for_detected_changes(self, mocker: MockerFixture) -> None:
         detected: list[str] = []
 
         async def _inner() -> None:
             watcher = OracleWatcher(Path("/project"), lambda p: detected.append(p))
-            with patch("oracle.watcher.awatch", new=_fake_awatch):
-                task = asyncio.create_task(watcher.start())
-                await asyncio.sleep(0.1)
-                watcher.stop()
-                await task
+            mocker.patch("oracle.watcher.awatch", new=_fake_awatch)
+            task = asyncio.create_task(watcher.start())
+            await asyncio.sleep(0.1)
+            watcher.stop()
+            await task
 
         asyncio.run(_inner())
         # Should only see source files, not .git or .venv (filtered by _source_filter)
         assert any("main.py" in p for p in detected)
         assert any("utils.py" in p for p in detected)
 
-    def it_filters_out_git_and_venv_via_watch_filter(self) -> None:
+    def it_filters_out_git_and_venv_via_watch_filter(self, mocker: MockerFixture) -> None:
         detected: list[str] = []
 
         async def _inner() -> None:
             watcher = OracleWatcher(Path("/project"), lambda p: detected.append(p))
-            with patch("oracle.watcher.awatch", new=_fake_awatch):
-                task = asyncio.create_task(watcher.start())
-                await asyncio.sleep(0.1)
-                watcher.stop()
-                await task
+            mocker.patch("oracle.watcher.awatch", new=_fake_awatch)
+            task = asyncio.create_task(watcher.start())
+            await asyncio.sleep(0.1)
+            watcher.stop()
+            await task
 
         asyncio.run(_inner())
         assert not any(".git" in p for p in detected)
         assert not any(".venv" in p for p in detected)
 
-    def it_stops_cleanly(self) -> None:
+    def it_stops_cleanly(self, mocker: MockerFixture) -> None:
         async def _inner() -> None:
             watcher = OracleWatcher(Path("/project"), lambda _: None)
-            with patch("oracle.watcher.awatch", new=_fake_awatch):
-                task = asyncio.create_task(watcher.start())
-                await asyncio.sleep(0.1)
-                watcher.stop()
-                await asyncio.wait_for(task, timeout=5.0)
+            mocker.patch("oracle.watcher.awatch", new=_fake_awatch)
+            task = asyncio.create_task(watcher.start())
+            await asyncio.sleep(0.1)
+            watcher.stop()
+            await asyncio.wait_for(task, timeout=5.0)
             assert watcher._stop_event.is_set()
 
         asyncio.run(_inner())
 
-    def it_suppresses_exceptions_from_awatch(self) -> None:
+    def it_suppresses_exceptions_from_awatch(self, mocker: MockerFixture) -> None:
         async def _inner() -> None:
             watcher = OracleWatcher(Path("/project"), lambda _: None)
-            with patch("oracle.watcher.awatch", new_callable=AsyncMock) as mock_awatch:
-                mock_awatch.side_effect = RuntimeError("watcher crashed")
-                await watcher.start()
+            mock_awatch = mocker.patch(
+                "oracle.watcher.awatch", new_callable=mocker.AsyncMock
+            )
+            mock_awatch.side_effect = RuntimeError("watcher crashed")
+            await watcher.start()
 
         asyncio.run(_inner())
 

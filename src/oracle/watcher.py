@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
 from watchfiles import Change, awatch
+
+logger = logging.getLogger(__name__)
 
 
 class OracleWatcher:
@@ -26,7 +29,7 @@ class OracleWatcher:
                 for _change_type, path in changes:
                     self.on_change(path)
         except Exception:
-            pass
+            logger.exception("File watcher crashed unexpectedly")
 
     def stop(self) -> None:
         """Signal the watcher to stop."""

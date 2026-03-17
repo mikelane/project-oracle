@@ -36,7 +36,6 @@ class OracleStore:
                 read_count  INTEGER DEFAULT 1
             );
 
-            -- git_state: forward declaration. Methods added by Task 5 (GitCache).
             CREATE TABLE IF NOT EXISTS git_state (
                 id          INTEGER PRIMARY KEY,
                 branch      TEXT NOT NULL,

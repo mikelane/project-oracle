@@ -22,6 +22,14 @@ _PATTERNS: list[tuple[Intent, tuple[str, ...]]] = [
     (Intent.READINESS, ("ready", "push", "merge", "ci", "ship")),
     (Intent.TEST_STATUS, ("test", "passing", "failing", "coverage", "pytest", "spec")),
     (Intent.PROJECT_STRUCTURE, ("structure", "stack", "overview", "what is this", "tech")),
+    (
+        Intent.CODE_UNDERSTANDING,
+        (
+            "import", "find", "where", "how", "explain", "what",
+            "function", "class", "method", "module", "handler",
+            "auth", "database", "connection", "config", "logic",
+        ),
+    ),
 ]
 
 
@@ -31,5 +39,4 @@ def classify_intent(question: str) -> Intent:
     for intent, keywords in _PATTERNS:
         if any(kw in q for kw in keywords):
             return intent
-    # Default: assume code understanding (chunkhound)
-    return Intent.CODE_UNDERSTANDING
+    return Intent.UNKNOWN

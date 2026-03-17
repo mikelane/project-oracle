@@ -1,4 +1,4 @@
-"""Tests for oracle_run tool handler."""
+"""Tests for command execution via CommandCache (the production code path)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from oracle.cache.command_cache import CommandCache
+from oracle.cache.command_cache import CommandCache, CommandNotAllowedError
 from oracle.storage.store import OracleStore
-from oracle.tools.run import handle_oracle_run
 
 
 @pytest.fixture
@@ -31,38 +30,27 @@ def project(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def cache(store: OracleStore, project: Path) -> CommandCache:
-    return CommandCache(store, project)
+    return CommandCache(store, project, extra_allowed=["echo"])
 
 
 @pytest.mark.medium
-class DescribeOracleRun:
+class DescribeCommandRun:
     def it_runs_allowed_command(self, cache: CommandCache) -> None:
-        result = handle_oracle_run(["echo hello"], cache)
-        assert "$ echo hello" in result
+        result = cache.run_summarized("echo hello")
         assert "hello" in result
 
-    def it_shows_not_allowed_for_rejected_command(
-        self, cache: CommandCache
+    def it_raises_for_rejected_command(self, cache: CommandCache) -> None:
+        with pytest.raises(CommandNotAllowedError):
+            cache.run_summarized("curl https://evil.com")
+
+    def it_returns_cached_result_on_repeat(
+        self, cache: CommandCache, project: Path
     ) -> None:
-        result = handle_oracle_run(["curl https://evil.com"], cache)
-        assert "$ curl https://evil.com" in result
-        assert "not allowed" in result.lower()
+        first = cache.run_summarized("echo deterministic")
+        second = cache.run_summarized("echo deterministic")
+        assert "deterministic" in first
+        assert "Cached result" in second
 
-    def it_runs_multiple_commands(self, cache: CommandCache) -> None:
-        result = handle_oracle_run(["echo first", "echo second"], cache)
-        assert "$ echo first" in result
-        assert "first" in result
-        assert "$ echo second" in result
-        assert "second" in result
-
-    def it_continues_after_rejected_command(self, cache: CommandCache) -> None:
-        result = handle_oracle_run(
-            ["curl https://evil.com", "echo after"], cache
-        )
-        assert "not allowed" in result.lower()
-        assert "$ echo after" in result
-        assert "after" in result
-
-    def it_returns_empty_for_empty_list(self, cache: CommandCache) -> None:
-        result = handle_oracle_run([], cache)
-        assert result == ""
+    def it_rejects_empty_command(self, cache: CommandCache) -> None:
+        with pytest.raises(CommandNotAllowedError):
+            cache.run_summarized("   ")

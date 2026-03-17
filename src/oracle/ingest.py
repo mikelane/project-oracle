@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def drain_ingest_queue(queue_dir: Path) -> list[dict[str, Any]]:
@@ -18,7 +21,7 @@ def drain_ingest_queue(queue_dir: Path) -> list[dict[str, Any]]:
             data = json.loads(json_file.read_text())
             entries.append(data)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-            pass  # skip malformed or unreadable
+            logger.debug("Skipping malformed ingest entry: %s", json_file)
         finally:
             with contextlib.suppress(OSError):
                 json_file.unlink()

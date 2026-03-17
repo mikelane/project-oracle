@@ -27,8 +27,8 @@ def handle_oracle_grep(pattern: str, path: str) -> str:
             text=True,
             timeout=_GREP_TIMEOUT,
         )
-    except (subprocess.TimeoutExpired, OSError):
-        return f"No matches for pattern: {pattern}"
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return f"Error: grep failed for pattern '{pattern}': {exc}"
 
     if result.returncode != 0 or not result.stdout.strip():
         return f"No matches for pattern: {pattern}"

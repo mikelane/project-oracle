@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def git_cmd(args: list[str], cwd: Path) -> str:
@@ -17,6 +20,7 @@ def git_cmd(args: list[str], cwd: Path) -> str:
             timeout=10,
         )
     except (subprocess.TimeoutExpired, OSError):
+        logger.warning("git command failed: %s", args, exc_info=True)
         return ""
     if result.returncode != 0:
         return ""

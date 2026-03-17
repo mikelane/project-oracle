@@ -2,9 +2,8 @@
 
 from behave import given, when
 
-from oracle.cache.command_cache import CommandCache
+from oracle.cache.command_cache import CommandCache, CommandNotAllowedError
 from oracle.storage.store import OracleStore
-from oracle.tools.run import handle_oracle_run
 
 
 def _get_or_create_command_cache(context):
@@ -19,13 +18,20 @@ def _get_or_create_command_cache(context):
 @when('the agent calls oracle_run with "{command}"')
 def step_oracle_run(context, command):
     cache = _get_or_create_command_cache(context)
-    context.last_response = handle_oracle_run([command], cache)
+    try:
+        output = cache.run_summarized(command)
+    except CommandNotAllowedError:
+        output = f"Error: command not allowed: {command}"
+    context.last_response = f"$ {command}\n{output}"
 
 
 @given('the agent has run "{command}" before')
 def step_agent_has_run_command(context, command):
     cache = _get_or_create_command_cache(context)
-    handle_oracle_run([command], cache)
+    try:
+        cache.run_summarized(command)
+    except CommandNotAllowedError:
+        pass
 
 
 @given("no source files have changed")

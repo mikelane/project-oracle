@@ -6,9 +6,9 @@ import subprocess
 import time
 from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
+from pytest_mock import MockerFixture
 
 from oracle.cache.command_cache import (
     DEFAULT_ALLOWLIST,
@@ -236,21 +236,23 @@ class DescribeShellInjectionHardening:
         with pytest.raises(CommandNotAllowedError):
             cache.run_summarized("pytest > /tmp/evil")
 
-    def it_executes_without_shell_interpretation(self, cache: CommandCache) -> None:
+    def it_executes_without_shell_interpretation(
+        self, cache: CommandCache, mocker: MockerFixture
+    ) -> None:
         """Verify subprocess.run is called with shell=False and a list of args."""
-        with patch("oracle.cache.command_cache.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=["pytest", "--version"],
-                returncode=0,
-                stdout="pytest 8.0.0\n",
-                stderr="",
-            )
-            cache.run_summarized("pytest --version")
-            call_args = mock_run.call_args
-            # First positional arg must be a list (not a string)
-            assert isinstance(call_args[0][0], list)
-            # shell must be False
-            assert call_args[1].get("shell") is False
+        mock_run = mocker.patch("oracle.cache.command_cache.subprocess.run")
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "--version"],
+            returncode=0,
+            stdout="pytest 8.0.0\n",
+            stderr="",
+        )
+        cache.run_summarized("pytest --version")
+        call_args = mock_run.call_args
+        # First positional arg must be a list (not a string)
+        assert isinstance(call_args[0][0], list)
+        # shell must be False
+        assert call_args[1].get("shell") is False
 
 
 @pytest.mark.medium
@@ -295,27 +297,31 @@ class DescribeCommandCacheRun:
         result = cache.run_summarized(f"echo {'A' * 3000}")
         assert len(result) <= 2000
 
-    def it_handles_command_timeout(self, cache: CommandCache) -> None:
+    def it_handles_command_timeout(
+        self, cache: CommandCache, mocker: MockerFixture
+    ) -> None:
         # Patch subprocess.run to raise TimeoutExpired
-        with patch("oracle.cache.command_cache.subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 999", timeout=120)
-            result = cache.run_summarized("echo timeout-test")
-            assert "timed out" in result.lower()
+        mock_run = mocker.patch("oracle.cache.command_cache.subprocess.run")
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 999", timeout=120)
+        result = cache.run_summarized("echo timeout-test")
+        assert "timed out" in result.lower()
 
-    def it_includes_stderr_in_output(self, cache: CommandCache) -> None:
+    def it_includes_stderr_in_output(
+        self, cache: CommandCache, mocker: MockerFixture
+    ) -> None:
         # Use a command that writes to stderr
         # "echo msg >&2" contains &, which is blocked by chain operators.
         # Instead, patch subprocess.run to return stderr.
-        with patch("oracle.cache.command_cache.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                args="echo test",
-                returncode=0,
-                stdout="stdout-part\n",
-                stderr="stderr-part\n",
-            )
-            result = cache.run_summarized("echo test")
-            assert "stdout-part" in result
-            assert "stderr-part" in result
+        mock_run = mocker.patch("oracle.cache.command_cache.subprocess.run")
+        mock_run.return_value = subprocess.CompletedProcess(
+            args="echo test",
+            returncode=0,
+            stdout="stdout-part\n",
+            stderr="stderr-part\n",
+        )
+        result = cache.run_summarized("echo test")
+        assert "stdout-part" in result
+        assert "stderr-part" in result
 
     def it_shows_cached_result_with_elapsed_minutes(
         self, cache: CommandCache, store: OracleStore

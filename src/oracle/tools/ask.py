@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import anthropic
 
 from oracle.intent import Intent, classify_intent
 from oracle.project import ProjectState
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_oracle_ask(question: str, project: ProjectState) -> str:
@@ -190,4 +193,5 @@ async def _haiku_fallback(question: str, project: ProjectState) -> str:
                 return block.text
         return "Unable to get response from Haiku"
     except Exception:
+        logger.exception("Haiku fallback failed")
         return "Unable to answer: Anthropic API not configured or unavailable"

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+
+from pytest_mock import MockerFixture
 
 from oracle.ingest import drain_ingest_queue
 
@@ -92,7 +93,9 @@ class DescribeIngestQueue:
         # Non-json file should still exist
         assert (queue_dir / "readme.txt").exists()
 
-    def it_continues_when_unlink_fails(self, tmp_path: Path) -> None:
+    def it_continues_when_unlink_fails(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         queue_dir = tmp_path / "ingest"
         queue_dir.mkdir()
         (queue_dir / "001.json").write_text(json.dumps({"a": 1}))
@@ -105,8 +108,8 @@ class DescribeIngestQueue:
                 raise OSError("permission denied")
             original_unlink(self_path, missing_ok=missing_ok)
 
-        with patch.object(Path, "unlink", failing_unlink):
-            entries = drain_ingest_queue(queue_dir)
+        mocker.patch.object(Path, "unlink", failing_unlink)
+        entries = drain_ingest_queue(queue_dir)
 
         # Both files were read successfully despite unlink failure on first
         assert len(entries) == 2

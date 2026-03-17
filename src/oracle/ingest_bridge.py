@@ -26,7 +26,10 @@ def process_ingest(
         if entry.get("tool_name") != "Read":
             continue
 
-        file_path = entry.get("tool_input", {}).get("file_path")
+        tool_input = entry.get("tool_input", {})
+        if not isinstance(tool_input, dict):
+            continue
+        file_path = tool_input.get("file_path")
         if file_path is None:
             continue
 

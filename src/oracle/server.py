@@ -107,8 +107,11 @@ def oracle_status() -> str:
 
     assert project.git_cache is not None
     assert project.store is not None
-    result = handle_oracle_status(project.stack, project.git_cache, project.store)
+    # Capture delta stats BEFORE handle_oracle_status calls refresh(),
+    # which would poison _last_snapshot and make get_delta_with_stats()
+    # always report "no changes" (false cache hit).
     _delta_text, cache_hit, tokens_saved = project.git_cache.get_delta_with_stats()
+    result = handle_oracle_status(project.stack, project.git_cache, project.store)
     _log(project, "oracle_status", None, cache_hit, tokens_saved)
     return result
 

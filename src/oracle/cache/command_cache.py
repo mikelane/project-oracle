@@ -131,7 +131,11 @@ class CommandCache:
         source_files: list[Path] = []
 
         for path in sorted(self._project_root.rglob("*")):
-            if not path.is_file():
+            try:
+                is_file = path.is_file()
+            except OSError:
+                continue
+            if not is_file:
                 continue
             if path.suffix not in _SOURCE_EXTENSIONS:
                 continue
@@ -141,6 +145,9 @@ class CommandCache:
             source_files.append(path)
 
         for path in source_files:
-            hasher.update(f"{path}:{path.stat().st_mtime_ns}".encode())
+            try:
+                hasher.update(f"{path}:{path.stat().st_mtime_ns}".encode())
+            except OSError:
+                continue
 
         return hasher.hexdigest()[:16]

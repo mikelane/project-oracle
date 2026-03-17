@@ -44,6 +44,13 @@ def _ensure_caches(project: ProjectState) -> None:
         project.command_cache = CommandCache(project.store, project.root)
 
 
+def _before_tool() -> None:
+    """Drain the ingest queue and pre-populate caches before every tool call."""
+    from oracle.ingest_bridge import process_ingest
+
+    process_ingest(_registry, _oracle_dir, _ensure_caches)
+
+
 def _log(
     project: ProjectState,
     tool_name: str,
@@ -62,6 +69,7 @@ def _log(
 @mcp.tool()
 def oracle_read(path: str) -> str:
     """Read a file, returning full content on first read or a compact delta on repeat reads."""
+    _before_tool()
     resolved = Path(path).resolve()
     project = _registry.for_path(resolved)
     if project is None:
@@ -77,6 +85,7 @@ def oracle_read(path: str) -> str:
 @mcp.tool()
 def oracle_grep(pattern: str, path: str = ".") -> str:
     """Search source files for a regex pattern. Returns up to 50 matches."""
+    _before_tool()
     from oracle.tools.grep import handle_oracle_grep
 
     result = handle_oracle_grep(pattern, path)
@@ -89,6 +98,7 @@ def oracle_grep(pattern: str, path: str = ".") -> str:
 @mcp.tool()
 def oracle_status() -> str:
     """Return current project status: stack info, git branch, clean/dirty state."""
+    _before_tool()
     project = _registry.current()
     if project is None:
         return "Error: no active project. Call oracle_read first to detect a project."
@@ -106,6 +116,7 @@ def oracle_status() -> str:
 @mcp.tool()
 def oracle_run(commands: list[str]) -> str:
     """Run allowlisted commands through the cache layer. Returns cached results when unchanged."""
+    _before_tool()
     from oracle.cache.command_cache import CommandNotAllowedError
 
     project = _registry.current()
@@ -136,6 +147,7 @@ def oracle_run(commands: list[str]) -> str:
 @mcp.tool()
 def oracle_ask(question: str) -> str:
     """Ask a natural-language question about the project. Routes to cache, grep, or Haiku."""
+    _before_tool()
     project = _registry.current()
     if project is None:
         return "Error: no active project. Call oracle_read first to detect a project."
@@ -150,6 +162,7 @@ def oracle_ask(question: str) -> str:
 @mcp.tool()
 def oracle_forget(path: str) -> str:
     """Clear the file cache for a path. Next oracle_read returns full content."""
+    _before_tool()
     resolved = Path(path).resolve()
     project = _registry.for_path(resolved)
     if project is None:

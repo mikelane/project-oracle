@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -25,10 +26,9 @@ DEFAULT_ALLOWLIST: tuple[str, ...] = (
     "cargo test",
     "cargo build",
     "cargo clippy",
-    "echo",
 )
 
-_CHAIN_OPERATORS = re.compile(r"[;&|`$()]")
+_DANGEROUS_CHARS = re.compile(r"[;&|`$()>\n\r\t<{}!#~]")
 
 _SOURCE_EXTENSIONS = (".py", ".ts", ".js", ".go", ".rs")
 _SKIP_DIRS = {".venv", "node_modules"}
@@ -58,7 +58,7 @@ class CommandCache:
 
     def is_allowed(self, command: str) -> bool:
         """Check if command starts with an allowed prefix and has no shell injection."""
-        if _CHAIN_OPERATORS.search(command):
+        if _DANGEROUS_CHARS.search(command):
             return False
         cmd_parts = command.strip().split()
         if not cmd_parts:
@@ -100,8 +100,8 @@ class CommandCache:
         # Run the command
         try:
             result = subprocess.run(
-                command,
-                shell=True,  # noqa: S602
+                shlex.split(command),
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=_COMMAND_TIMEOUT,

@@ -190,6 +190,35 @@ class OracleStore:
             "total_tokens_saved": row["total_tokens_saved"],
         }
 
+    def get_cumulative_stats(self) -> dict[str, int]:
+        row = self._conn.execute(
+            """
+            SELECT
+                SUM(cache_hit) AS total_cache_hits,
+                SUM(tokens_saved) AS total_tokens_saved
+            FROM agent_log
+            """
+        ).fetchone()
+        if row is None or row["total_cache_hits"] is None:
+            return {"total_cache_hits": 0, "total_tokens_saved": 0}
+        return {
+            "total_cache_hits": row["total_cache_hits"],
+            "total_tokens_saved": row["total_tokens_saved"],
+        }
+
+    def get_session_call_count(self, session_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS cnt FROM agent_log WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        return row["cnt"] if row is not None else 0
+
+    def get_cumulative_call_count(self) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS cnt FROM agent_log"
+        ).fetchone()
+        return row["cnt"] if row is not None else 0
+
     def evict_stale_files(self, max_age_days: int = 30, now: int | None = None) -> int:
         if now is None:
             now = int(time.time())

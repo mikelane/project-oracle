@@ -19,7 +19,7 @@ class DescribeServerInit:
         from oracle.server import mcp
 
         tools = await mcp.list_tools()
-        assert len(tools) == 6
+        assert len(tools) == 7
 
     async def it_exposes_all_required_tool_names(self) -> None:
         from oracle.server import mcp
@@ -33,6 +33,7 @@ class DescribeServerInit:
             "oracle_run",
             "oracle_ask",
             "oracle_forget",
+            "oracle_stats",
         }
         assert tool_names == expected
 

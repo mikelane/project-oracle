@@ -176,6 +176,19 @@ def oracle_forget(path: str) -> str:
     return result
 
 
+@mcp.tool()
+def oracle_stats() -> str:
+    """Return token savings stats for the current session and cumulative across all sessions."""
+    _before_tool()
+    project = _registry.current()
+    if project is None:
+        return "Error: no active project. Call oracle_read first to detect a project."
+    from oracle.tools.stats import handle_oracle_stats
+
+    assert project.store is not None
+    return handle_oracle_stats(project.session_id, project.store)
+
+
 def main() -> None:
     """Entry point for the project-oracle MCP server."""
     mcp.run()

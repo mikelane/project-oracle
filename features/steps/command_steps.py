@@ -11,7 +11,9 @@ def _get_or_create_command_cache(context):
         db_path = context.tmp_dir / "state.db"
         context.oracle_store = OracleStore(db_path)
     if not hasattr(context, "oracle_command_cache"):
-        context.oracle_command_cache = CommandCache(context.oracle_store, context.project_root)
+        context.oracle_command_cache = CommandCache(
+            context.oracle_store, context.project_root, extra_allowed=["echo"]
+        )
     return context.oracle_command_cache
 
 

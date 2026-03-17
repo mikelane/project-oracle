@@ -60,6 +60,8 @@ class FileCache:
             content = file_path.read_text()
         except (UnicodeDecodeError, ValueError):
             return f"Error: file is not valid UTF-8 text: {path}", 0
+        except OSError as exc:
+            return f"Error: cannot read file: {path}: {exc}", 0
         content_hash = hashlib.sha256(content.encode()).hexdigest()
         now = int(time.time())
 

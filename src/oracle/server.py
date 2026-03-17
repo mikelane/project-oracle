@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -43,6 +44,21 @@ def _ensure_caches(project: ProjectState) -> None:
         project.command_cache = CommandCache(project.store, project.root)
 
 
+def _log(
+    project: ProjectState,
+    tool_name: str,
+    input_data: str | None,
+    cache_hit: bool,
+    tokens_saved: int,
+) -> None:
+    """Record a tool interaction to the agent log. No-op when store is not wired."""
+    if project.store is None:
+        return
+    project.store.log_interaction(
+        project.session_id, tool_name, input_data, cache_hit, tokens_saved, int(time.time())
+    )
+
+
 @mcp.tool()
 def oracle_read(path: str) -> str:
     """Read a file, returning full content on first read or a compact delta on repeat reads."""
@@ -51,10 +67,11 @@ def oracle_read(path: str) -> str:
     if project is None:
         return f"Error: no project detected for path: {path}"
     _ensure_caches(project)
-    from oracle.tools.read import handle_oracle_read
-
     assert project.file_cache is not None
-    return handle_oracle_read(str(resolved), project.file_cache)
+    response, tokens_saved = project.file_cache.smart_read_with_stats(str(resolved))
+    cache_hit = tokens_saved > 0
+    _log(project, "oracle_read", str(resolved), cache_hit, tokens_saved)
+    return response
 
 
 @mcp.tool()
@@ -62,7 +79,11 @@ def oracle_grep(pattern: str, path: str = ".") -> str:
     """Search source files for a regex pattern. Returns up to 50 matches."""
     from oracle.tools.grep import handle_oracle_grep
 
-    return handle_oracle_grep(pattern, path)
+    result = handle_oracle_grep(pattern, path)
+    project = _registry.current()
+    if project is not None:
+        _log(project, "oracle_grep", pattern, False, 0)
+    return result
 
 
 @mcp.tool()
@@ -76,20 +97,40 @@ def oracle_status() -> str:
 
     assert project.git_cache is not None
     assert project.store is not None
-    return handle_oracle_status(project.stack, project.git_cache, project.store)
+    result = handle_oracle_status(project.stack, project.git_cache, project.store)
+    _delta_text, cache_hit, tokens_saved = project.git_cache.get_delta_with_stats()
+    _log(project, "oracle_status", None, cache_hit, tokens_saved)
+    return result
 
 
 @mcp.tool()
 def oracle_run(commands: list[str]) -> str:
     """Run allowlisted commands through the cache layer. Returns cached results when unchanged."""
+    from oracle.cache.command_cache import CommandNotAllowedError
+
     project = _registry.current()
     if project is None:
         return "Error: no active project. Call oracle_read first to detect a project."
     _ensure_caches(project)
-    from oracle.tools.run import handle_oracle_run
-
     assert project.command_cache is not None
-    return handle_oracle_run(commands, project.command_cache)
+
+    parts: list[str] = []
+    total_tokens_saved = 0
+    any_cache_hit = False
+    for cmd in commands:
+        try:
+            output, cache_hit, tokens_saved = project.command_cache.run_summarized_with_stats(cmd)
+        except CommandNotAllowedError:
+            output = f"Error: command not allowed: {cmd}"
+            cache_hit = False
+            tokens_saved = 0
+        if cache_hit:
+            any_cache_hit = True
+        total_tokens_saved += tokens_saved
+        parts.append(f"$ {cmd}\n{output}")
+
+    _log(project, "oracle_run", "; ".join(commands), any_cache_hit, total_tokens_saved)
+    return "\n\n".join(parts)
 
 
 @mcp.tool()
@@ -101,7 +142,9 @@ def oracle_ask(question: str) -> str:
     _ensure_caches(project)
     from oracle.tools.ask import handle_oracle_ask
 
-    return asyncio.run(handle_oracle_ask(question, project))
+    result = asyncio.run(handle_oracle_ask(question, project))
+    _log(project, "oracle_ask", question, False, 0)
+    return result
 
 
 @mcp.tool()
@@ -115,7 +158,9 @@ def oracle_forget(path: str) -> str:
     from oracle.tools.forget import handle_oracle_forget
 
     assert project.file_cache is not None
-    return handle_oracle_forget(str(resolved), project.file_cache)
+    result = handle_oracle_forget(str(resolved), project.file_cache)
+    _log(project, "oracle_forget", str(resolved), False, 0)
+    return result
 
 
 def main() -> None:

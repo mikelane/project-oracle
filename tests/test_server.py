@@ -424,6 +424,103 @@ class DescribeOracleForgetTool:
             assert "cache cleared" in result.lower()
 
 
+class DescribeAgentLogging:
+    """Verify every oracle tool call logs stats to SQLite via store.log_interaction()."""
+
+    @pytest.fixture
+    def oracle_dir(self, tmp_path: Path) -> Path:
+        d = tmp_path / ".oracle"
+        d.mkdir()
+        (d / "projects").mkdir()
+        return d
+
+    @pytest.fixture
+    def project_dir(self, tmp_path: Path) -> Path:
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / ".git").mkdir()
+        (project / "pyproject.toml").write_text('[project]\nname = "test"\n')
+        (project / "hello.py").write_text("print('hello world')\n")
+        return project
+
+    def it_logs_read_interaction_with_session_id(
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        registry = ProjectRegistry(oracle_dir)
+
+        with patch("oracle.server._registry", registry):
+            oracle_read(str(project_dir / "hello.py"))
+
+        # Retrieve the project to check its store
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        stats = project.store.get_session_stats(project.session_id)
+        # At least one log entry exists (total_cache_hits + total_tokens_saved reflect it)
+        # First read is a miss, so cache_hit=0, but the log row should exist
+        rows = project.store._conn.execute(
+            "SELECT * FROM agent_log WHERE session_id = ?", (project.session_id,)
+        ).fetchall()
+        assert len(rows) >= 1
+        assert rows[0]["tool_name"] == "oracle_read"
+
+    def it_logs_cache_hit_on_reread(
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        registry = ProjectRegistry(oracle_dir)
+
+        with patch("oracle.server._registry", registry):
+            oracle_read(str(project_dir / "hello.py"))
+            oracle_read(str(project_dir / "hello.py"))
+
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        stats = project.store.get_session_stats(project.session_id)
+        assert stats["total_tokens_saved"] > 0
+
+    def it_logs_grep_as_miss(
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_grep, oracle_read
+
+        registry = ProjectRegistry(oracle_dir)
+
+        with patch("oracle.server._registry", registry):
+            # Read first to establish project
+            oracle_read(str(project_dir / "hello.py"))
+            oracle_grep("print", str(project_dir))
+
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        rows = project.store._conn.execute(
+            "SELECT * FROM agent_log WHERE tool_name = 'oracle_grep'",
+        ).fetchall()
+        assert len(rows) >= 1
+        assert rows[0]["cache_hit"] == 0
+        assert rows[0]["tokens_saved"] == 0
+
+    def it_does_not_crash_when_store_is_none(self) -> None:
+        from oracle.server import _log
+
+        project = ProjectState(
+            root=Path("/nonexistent"),
+            stack=StackInfo(lang="python"),
+            store=None,
+            session_id="test-session",
+        )
+        # Should not raise
+        _log(project, "oracle_read", "/some/path", False, 0)
+
+
 class DescribeMainEntryPoint:
     """Test the main() entry point."""
 

@@ -459,9 +459,7 @@ class DescribeAgentLogging:
         project = registry.for_path(project_dir / "hello.py")
         assert project is not None
         assert project.store is not None
-        stats = project.store.get_session_stats(project.session_id)
-        # At least one log entry exists (total_cache_hits + total_tokens_saved reflect it)
-        # First read is a miss, so cache_hit=0, but the log row should exist
+        # Verify the log row exists (first read is a miss, not a cache hit)
         rows = project.store._conn.execute(
             "SELECT * FROM agent_log WHERE session_id = ?", (project.session_id,)
         ).fetchall()

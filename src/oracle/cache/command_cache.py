@@ -98,7 +98,8 @@ class CommandCache:
             elapsed = now - ran_at
             cached_output = str(cached["output"])
             tokens_saved = len(cached_output) // 4
-            return f"Cached result ({_format_elapsed(elapsed)} ago):\n{cached_output}", True, tokens_saved
+            text = f"Cached result ({_format_elapsed(elapsed)} ago):\n{cached_output}"
+            return text, True, tokens_saved
 
         # Run the command
         try:

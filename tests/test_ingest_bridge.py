@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from oracle.ingest_bridge import process_ingest
-from oracle.project import ProjectState, StackInfo
+from oracle.project import ProjectState
 
 
 @pytest.mark.medium
@@ -45,7 +44,6 @@ class DescribeProcessIngest:
     ) -> None:
         from oracle.cache.file_cache import FileCache
         from oracle.registry import ProjectRegistry
-        from oracle.storage.store import OracleStore
 
         file_path = str(project_dir / "hello.py")
         self._enqueue(oracle_dir, {

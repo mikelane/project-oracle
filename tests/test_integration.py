@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -13,7 +12,6 @@ from oracle.cache.file_cache import FileCache
 from oracle.ingest_bridge import process_ingest
 from oracle.project import ProjectState
 from oracle.registry import ProjectRegistry
-from oracle.storage.store import OracleStore
 
 
 @pytest.mark.medium

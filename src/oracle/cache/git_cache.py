@@ -60,9 +60,10 @@ class GitCache:
         return delta_text
 
     def get_delta_with_stats(self) -> tuple[str, bool, int]:
-        """Compare current state against last snapshot, returning (delta_text, is_cache_hit, tokens_saved).
+        """Compare current state against last snapshot.
 
-        First call (no previous snapshot): return full formatted snapshot, is_cache_hit=False, tokens_saved=0.
+        Returns (delta_text, is_cache_hit, tokens_saved).
+        First call (no previous snapshot): full snapshot, False, 0.
         Subsequent calls with changes: return delta, is_cache_hit=False, tokens_saved=0.
         Subsequent calls without changes: return "No changes since last check",
             is_cache_hit=True, tokens_saved=len(full_format)//4.

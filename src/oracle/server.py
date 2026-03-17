@@ -74,8 +74,11 @@ def oracle_read(path: str) -> str:
     project = _registry.for_path(resolved)
     if project is None:
         return f"Error: no project detected for path: {path}"
+    if not resolved.is_relative_to(project.root):
+        return f"Error: path {path} is outside project root"
     _ensure_caches(project)
-    assert project.file_cache is not None
+    if project.file_cache is None:
+        return "Error: file cache not initialized"
     response, tokens_saved = project.file_cache.smart_read_with_stats(str(resolved))
     cache_hit = tokens_saved > 0
     _log(project, "oracle_read", str(resolved), cache_hit, tokens_saved)
@@ -87,6 +90,12 @@ def oracle_grep(pattern: str, path: str = ".") -> str:
     """Search source files for a regex pattern. Returns up to 50 matches."""
     _before_tool()
     from oracle.tools.grep import handle_oracle_grep
+
+    if path != ".":
+        resolved_grep = Path(path).resolve()
+        project = _registry.current()
+        if project is not None and not resolved_grep.is_relative_to(project.root):
+            return f"Error: path {path} is outside project root"
 
     result = handle_oracle_grep(pattern, path)
     project = _registry.current()
@@ -105,8 +114,10 @@ def oracle_status() -> str:
     _ensure_caches(project)
     from oracle.tools.status import handle_oracle_status
 
-    assert project.git_cache is not None
-    assert project.store is not None
+    if project.git_cache is None:
+        return "Error: git cache not initialized"
+    if project.store is None:
+        return "Error: store not initialized"
     # Capture delta stats BEFORE handle_oracle_status calls refresh(),
     # which would poison _last_snapshot and make get_delta_with_stats()
     # always report "no changes" (false cache hit).
@@ -126,7 +137,8 @@ def oracle_run(commands: list[str]) -> str:
     if project is None:
         return "Error: no active project. Call oracle_read first to detect a project."
     _ensure_caches(project)
-    assert project.command_cache is not None
+    if project.command_cache is None:
+        return "Error: command cache not initialized"
 
     parts: list[str] = []
     total_tokens_saved = 0
@@ -173,7 +185,8 @@ def oracle_forget(path: str) -> str:
     _ensure_caches(project)
     from oracle.tools.forget import handle_oracle_forget
 
-    assert project.file_cache is not None
+    if project.file_cache is None:
+        return "Error: file cache not initialized"
     result = handle_oracle_forget(str(resolved), project.file_cache)
     _log(project, "oracle_forget", str(resolved), False, 0)
     return result
@@ -188,7 +201,8 @@ def oracle_stats() -> str:
         return "Error: no active project. Call oracle_read first to detect a project."
     from oracle.tools.stats import handle_oracle_stats
 
-    assert project.store is not None
+    if project.store is None:
+        return "Error: store not initialized"
     return handle_oracle_stats(project.session_id, project.store)
 
 

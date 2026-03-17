@@ -189,6 +189,36 @@ class DescribeFileCacheTokenEstimate:
 
 
 @pytest.mark.medium
+class DescribeFileCacheSizeLimit:
+    def it_rejects_files_exceeding_size_limit(
+        self, cache: FileCache, tmp_path: Path
+    ) -> None:
+        from oracle.cache.file_cache import _MAX_FILE_SIZE
+
+        f = tmp_path / "huge.bin"
+        # Create a file just over the limit using truncate (no actual bytes written to disk)
+        f.touch()
+        with f.open("ab") as fh:
+            fh.truncate(_MAX_FILE_SIZE + 1)
+
+        result, tokens_saved = cache.smart_read_with_stats(str(f))
+        assert "file too large" in result.lower()
+        assert tokens_saved == 0
+
+    def it_accepts_files_at_the_size_limit(
+        self, cache: FileCache, tmp_path: Path
+    ) -> None:
+        from oracle.cache.file_cache import _MAX_FILE_SIZE
+
+        f = tmp_path / "borderline.txt"
+        # Write exactly _MAX_FILE_SIZE bytes (should be accepted)
+        f.write_bytes(b"x" * _MAX_FILE_SIZE)
+
+        result, tokens_saved = cache.smart_read_with_stats(str(f))
+        assert "file too large" not in result.lower()
+
+
+@pytest.mark.medium
 class DescribeFileCacheMarkStale:
     def it_updates_disk_sha256_in_store(
         self, cache: FileCache, store: OracleStore, tmp_path: Path

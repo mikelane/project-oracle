@@ -12,6 +12,8 @@ import zstandard as zstd
 from oracle.formatting import format_elapsed
 from oracle.storage.store import OracleStore
 
+_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 
 def _compute_delta(old: str, new: str) -> str:
     """Compute a unified diff between old and new content, skipping --- / +++ headers."""
@@ -45,6 +47,14 @@ class FileCache:
         file_path = Path(path)
         if not file_path.is_file():
             return f"Error: file not found: {path}", 0
+
+        try:
+            file_size = file_path.stat().st_size
+        except OSError:
+            return f"Error: cannot stat file: {path}", 0
+
+        if file_size > _MAX_FILE_SIZE:
+            return f"Error: file too large ({file_size:,} bytes, max {_MAX_FILE_SIZE:,})", 0
 
         content = file_path.read_text()
         content_hash = hashlib.sha256(content.encode()).hexdigest()

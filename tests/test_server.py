@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
+from pytest_mock import MockerFixture
 
 from oracle.project import ProjectState, StackInfo
 from oracle.storage.store import OracleStore
@@ -143,21 +143,21 @@ class DescribeServerIntegration:
         return project
 
     def it_reads_file_and_returns_content(
-        self, tmp_project: Path, oracle_dir: Path
+        self, tmp_project: Path, oracle_dir: Path, mocker: MockerFixture
     ) -> None:
         from oracle.server import _ensure_caches
 
-        with patch.dict(os.environ, {"ORACLE_DIR": str(oracle_dir)}):
-            from oracle.registry import ProjectRegistry
+        mocker.patch.dict(os.environ, {"ORACLE_DIR": str(oracle_dir)})
+        from oracle.registry import ProjectRegistry
 
-            registry = ProjectRegistry(oracle_dir)
-            project = registry.for_path(tmp_project / "hello.py")
-            assert project is not None
-            _ensure_caches(project)
-            assert project.file_cache is not None
+        registry = ProjectRegistry(oracle_dir)
+        project = registry.for_path(tmp_project / "hello.py")
+        assert project is not None
+        _ensure_caches(project)
+        assert project.file_cache is not None
 
-            result = project.file_cache.smart_read(str(tmp_project / "hello.py"))
-            assert "print('hello')" in result
+        result = project.file_cache.smart_read(str(tmp_project / "hello.py"))
+        assert "print('hello')" in result
 
     def it_returns_delta_on_reread(
         self, tmp_project: Path, oracle_dir: Path
@@ -218,7 +218,7 @@ class DescribeOracleReadTool:
     """Test the oracle_read tool function directly."""
 
     def it_returns_file_content_for_valid_path(
-        self, tmp_path: Path
+        self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
@@ -232,11 +232,13 @@ class DescribeOracleReadTool:
         (project_dir / ".git").mkdir()
         (project_dir / "foo.py").write_text("x = 1\n")
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_read(str(project_dir / "foo.py"))
-            assert "x = 1" in result
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_read(str(project_dir / "foo.py"))
+        assert "x = 1" in result
 
-    def it_returns_error_when_no_project_detected(self, tmp_path: Path) -> None:
+    def it_returns_error_when_no_project_detected(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
 
@@ -248,15 +250,71 @@ class DescribeOracleReadTool:
         no_project.mkdir()
         (no_project / "file.txt").write_text("data")
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_read(str(no_project / "file.txt"))
-            assert "no project detected" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_read(str(no_project / "file.txt"))
+        assert "no project detected" in result.lower()
+
+    def it_returns_error_when_file_cache_not_initialized(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+        (project_dir / "foo.py").write_text("x = 1\n")
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+        # Return a project with store=None so _ensure_caches cannot wire file_cache
+        project = ProjectState(
+            root=project_dir,
+            stack=StackInfo(lang="python"),
+            store=None,
+        )
+        mocker.patch.object(registry, "for_path", return_value=project)
+        result = oracle_read(str(project_dir / "foo.py"))
+        assert "file cache not initialized" in result.lower()
+
+    def it_rejects_path_outside_project_root(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        oracle_dir = tmp_path / ".oracle"
+        oracle_dir.mkdir()
+        (oracle_dir / "projects").mkdir()
+
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+        (project_dir / "foo.py").write_text("x = 1\n")
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+        store = OracleStore(oracle_dir / "projects" / "test.db")
+        project = ProjectState(
+            root=project_dir,
+            stack=StackInfo(lang="python"),
+            store=store,
+        )
+        mocker.patch.object(registry, "for_path", return_value=project)
+        result = oracle_read("/etc/passwd")
+        assert "outside project root" in result.lower()
 
 
 class DescribeOracleGrepTool:
     """Test the oracle_grep tool function."""
 
-    def it_delegates_to_handle_oracle_grep(self, tmp_path: Path) -> None:
+    def it_delegates_to_handle_oracle_grep(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_grep
 
@@ -269,15 +327,17 @@ class DescribeOracleGrepTool:
         (project_dir / ".git").mkdir()
         (project_dir / "bar.py").write_text("needle_here = True\n")
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_grep("needle_here", str(project_dir))
-            assert "needle_here" in result
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_grep("needle_here", str(project_dir))
+        assert "needle_here" in result
 
 
 class DescribeOracleStatusTool:
     """Test the oracle_status tool function."""
 
-    def it_returns_error_when_no_current_project(self, tmp_path: Path) -> None:
+    def it_returns_error_when_no_current_project(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_status
 
@@ -285,11 +345,13 @@ class DescribeOracleStatusTool:
         oracle_dir.mkdir()
         (oracle_dir / "projects").mkdir()
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_status()
-            assert "no active project" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_status()
+        assert "no active project" in result.lower()
 
-    def it_returns_status_for_active_project(self, tmp_path: Path, git_project: Path) -> None:
+    def it_returns_status_for_active_project(
+        self, tmp_path: Path, git_project: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read, oracle_status
 
@@ -297,17 +359,19 @@ class DescribeOracleStatusTool:
         oracle_dir.mkdir()
         (oracle_dir / "projects").mkdir()
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            # Read a file to set current project
-            oracle_read(str(git_project / "file.py"))
-            result = oracle_status()
-            assert "stack:" in result.lower() or "branch:" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        # Read a file to set current project
+        oracle_read(str(git_project / "file.py"))
+        result = oracle_status()
+        assert "stack:" in result.lower() or "branch:" in result.lower()
 
 
 class DescribeOracleRunTool:
     """Test the oracle_run tool function."""
 
-    def it_returns_error_when_no_current_project(self, tmp_path: Path) -> None:
+    def it_returns_error_when_no_current_project(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_run
 
@@ -315,11 +379,13 @@ class DescribeOracleRunTool:
         oracle_dir.mkdir()
         (oracle_dir / "projects").mkdir()
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_run(["echo hello"])
-            assert "no active project" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_run(["echo hello"])
+        assert "no active project" in result.lower()
 
-    def it_runs_allowed_command_for_active_project(self, tmp_path: Path) -> None:
+    def it_runs_allowed_command_for_active_project(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read, oracle_run
 
@@ -332,16 +398,18 @@ class DescribeOracleRunTool:
         (project_dir / ".git").mkdir()
         (project_dir / "main.py").write_text("x = 1\n")
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            oracle_read(str(project_dir / "main.py"))
-            result = oracle_run(["echo hello"])
-            assert "hello" in result
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        oracle_read(str(project_dir / "main.py"))
+        result = oracle_run(["echo hello"])
+        assert "hello" in result
 
 
 class DescribeOracleAskTool:
     """Test the oracle_ask tool function."""
 
-    def it_returns_error_when_no_current_project(self, tmp_path: Path) -> None:
+    def it_returns_error_when_no_current_project(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_ask
 
@@ -349,12 +417,12 @@ class DescribeOracleAskTool:
         oracle_dir.mkdir()
         (oracle_dir / "projects").mkdir()
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_ask("what is this?")
-            assert "no active project" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_ask("what is this?")
+        assert "no active project" in result.lower()
 
     def it_delegates_to_handle_oracle_ask_for_active_project(
-        self, tmp_path: Path
+        self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
         import asyncio
 
@@ -376,20 +444,20 @@ class DescribeOracleAskTool:
         def run_coro(coro: object) -> str:
             return asyncio.get_event_loop().run_until_complete(coro)  # type: ignore[arg-type]
 
-        with (
-            patch("oracle.server._registry", ProjectRegistry(oracle_dir)),
-            patch("oracle.server.asyncio.run", side_effect=run_coro),
-            patch("oracle.tools.ask.handle_oracle_ask", side_effect=fake_handle),
-        ):
-            oracle_read(str(project_dir / "main.py"))
-            result = oracle_ask("what is the stack?")
-            assert "answer to:" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        mocker.patch("oracle.server.asyncio.run", side_effect=run_coro)
+        mocker.patch("oracle.tools.ask.handle_oracle_ask", side_effect=fake_handle)
+        oracle_read(str(project_dir / "main.py"))
+        result = oracle_ask("what is the stack?")
+        assert "answer to:" in result.lower()
 
 
 class DescribeOracleForgetTool:
     """Test the oracle_forget tool function."""
 
-    def it_returns_error_when_no_project_detected(self, tmp_path: Path) -> None:
+    def it_returns_error_when_no_project_detected(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_forget
 
@@ -400,11 +468,13 @@ class DescribeOracleForgetTool:
         no_project = tmp_path / "bare"
         no_project.mkdir()
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            result = oracle_forget(str(no_project / "file.txt"))
-            assert "no project detected" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        result = oracle_forget(str(no_project / "file.txt"))
+        assert "no project detected" in result.lower()
 
-    def it_clears_cache_for_valid_path(self, tmp_path: Path) -> None:
+    def it_clears_cache_for_valid_path(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_forget, oracle_read
 
@@ -417,12 +487,12 @@ class DescribeOracleForgetTool:
         (project_dir / ".git").mkdir()
         (project_dir / "file.py").write_text("content\n")
 
-        with patch("oracle.server._registry", ProjectRegistry(oracle_dir)):
-            # Read first to populate cache
-            oracle_read(str(project_dir / "file.py"))
-            # Forget
-            result = oracle_forget(str(project_dir / "file.py"))
-            assert "cache cleared" in result.lower()
+        mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        # Read first to populate cache
+        oracle_read(str(project_dir / "file.py"))
+        # Forget
+        result = oracle_forget(str(project_dir / "file.py"))
+        assert "cache cleared" in result.lower()
 
 
 class DescribeAgentLogging:
@@ -445,15 +515,16 @@ class DescribeAgentLogging:
         return project
 
     def it_logs_read_interaction_with_session_id(
-        self, tmp_path: Path, oracle_dir: Path, project_dir: Path
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path,
+        mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
 
         registry = ProjectRegistry(oracle_dir)
 
-        with patch("oracle.server._registry", registry):
-            oracle_read(str(project_dir / "hello.py"))
+        mocker.patch("oracle.server._registry", registry)
+        oracle_read(str(project_dir / "hello.py"))
 
         # Retrieve the project to check its store
         project = registry.for_path(project_dir / "hello.py")
@@ -467,16 +538,17 @@ class DescribeAgentLogging:
         assert rows[0]["tool_name"] == "oracle_read"
 
     def it_logs_cache_hit_on_reread(
-        self, tmp_path: Path, oracle_dir: Path, project_dir: Path
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path,
+        mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
 
         registry = ProjectRegistry(oracle_dir)
 
-        with patch("oracle.server._registry", registry):
-            oracle_read(str(project_dir / "hello.py"))
-            oracle_read(str(project_dir / "hello.py"))
+        mocker.patch("oracle.server._registry", registry)
+        oracle_read(str(project_dir / "hello.py"))
+        oracle_read(str(project_dir / "hello.py"))
 
         project = registry.for_path(project_dir / "hello.py")
         assert project is not None
@@ -485,17 +557,18 @@ class DescribeAgentLogging:
         assert stats["total_tokens_saved"] > 0
 
     def it_logs_grep_as_miss(
-        self, tmp_path: Path, oracle_dir: Path, project_dir: Path
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path,
+        mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_grep, oracle_read
 
         registry = ProjectRegistry(oracle_dir)
 
-        with patch("oracle.server._registry", registry):
-            # Read first to establish project
-            oracle_read(str(project_dir / "hello.py"))
-            oracle_grep("print", str(project_dir))
+        mocker.patch("oracle.server._registry", registry)
+        # Read first to establish project
+        oracle_read(str(project_dir / "hello.py"))
+        oracle_grep("print", str(project_dir))
 
         project = registry.for_path(project_dir / "hello.py")
         assert project is not None
@@ -523,9 +596,9 @@ class DescribeAgentLogging:
 class DescribeMainEntryPoint:
     """Test the main() entry point."""
 
-    def it_calls_mcp_run(self) -> None:
+    def it_calls_mcp_run(self, mocker: MockerFixture) -> None:
         from oracle.server import main, mcp
 
-        with patch.object(mcp, "run") as mock_run:
-            main()
-            mock_run.assert_called_once()
+        mock_run = mocker.patch.object(mcp, "run")
+        main()
+        mock_run.assert_called_once()

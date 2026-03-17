@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from oracle.cache.git_cache import GitCache
-from oracle.project import ProjectState, StackInfo
 from oracle.storage.store import OracleStore
 
 
@@ -26,7 +23,7 @@ class DescribeOracleStatusCacheHitLogging:
     ) -> None:
         """The very first oracle_status call returns fresh data — it is NOT a cache hit.
         But the current code logs it as a hit because refresh() poisons the delta check."""
-        from oracle.server import _ensure_caches, _log, oracle_status
+        from oracle.server import oracle_status
 
         oracle_dir = tmp_path / ".oracle"
         oracle_dir.mkdir()

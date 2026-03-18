@@ -122,3 +122,28 @@ class DescribeOracleStatsCharacterization:
         assert lines[3] == "  Tokens saved: 1,234,567"
         assert lines[8] == "  Tokens saved: 1,234,567"
         store.close()
+
+
+@pytest.mark.medium
+class DescribeCrossSessionCharacterization:
+    def it_produces_full_content_on_cross_session_read(
+        self, tmp_project: Path, tmp_path: Path
+    ) -> None:
+        store = OracleStore(tmp_path / "cross.db")
+        file_path = str(tmp_project / "src" / "main.py")
+        raw_content = (tmp_project / "src" / "main.py").read_text()
+
+        # Session A: populate cache
+        cache_a = FileCache(store)
+        cache_a.smart_read(file_path)
+
+        # Session B: fresh FileCache, same store
+        cache_b = FileCache(store)
+        result = cache_b.smart_read(file_path)
+
+        # Must be exactly the raw file content — no prefix, no wrapper
+        assert result == raw_content
+        assert not result.startswith("No changes")
+        assert not result.startswith("Changed since")
+
+        store.close()

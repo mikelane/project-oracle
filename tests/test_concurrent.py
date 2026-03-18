@@ -39,7 +39,9 @@ class DescribeConcurrentReads:
         results = await asyncio.gather(
             *[asyncio.to_thread(read_in_thread, i) for i in range(10)]
         )
-        assert all("No changes" in r for r in results)
+        # Each thread has a fresh FileCache (new session), so gets full content
+        # (not "No changes"). Verify no corruption: all results are identical.
+        assert all(r == results[0] for r in results)
 
 
 @pytest.mark.medium

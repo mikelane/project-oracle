@@ -15,9 +15,7 @@ from oracle.tools.stats import handle_oracle_stats
 
 @pytest.mark.medium
 class DescribeFileCacheCharacterization:
-    def it_produces_stable_no_change_format(
-        self, tmp_project: Path, tmp_path: Path
-    ) -> None:
+    def it_produces_stable_no_change_format(self, tmp_project: Path, tmp_path: Path) -> None:
         store = OracleStore(tmp_path / "state.db")
         cache = FileCache(store)
         file_path = str(tmp_project / "src" / "main.py")
@@ -27,9 +25,7 @@ class DescribeFileCacheCharacterization:
         assert "ago)" in result
         store.close()
 
-    def it_produces_stable_delta_format(
-        self, tmp_project: Path, tmp_path: Path
-    ) -> None:
+    def it_produces_stable_delta_format(self, tmp_project: Path, tmp_path: Path) -> None:
         store = OracleStore(tmp_path / "state.db")
         cache = FileCache(store)
         file_path = tmp_project / "src" / "main.py"
@@ -40,9 +36,7 @@ class DescribeFileCacheCharacterization:
         assert "@@" in result  # unified diff marker
         store.close()
 
-    def it_produces_stable_forget_confirmation(
-        self, tmp_project: Path, tmp_path: Path
-    ) -> None:
+    def it_produces_stable_forget_confirmation(self, tmp_project: Path, tmp_path: Path) -> None:
         store = OracleStore(tmp_path / "state.db")
         cache = FileCache(store)
         file_path = str(tmp_project / "src" / "main.py")

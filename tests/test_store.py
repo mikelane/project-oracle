@@ -45,12 +45,8 @@ class DescribeOracleStoreInit:
         store2 = OracleStore(db_path)
         try:
             conn = sqlite3.connect(db_path)
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            )
-            tables = sorted(
-                row[0] for row in cursor.fetchall() if not row[0].startswith("sqlite_")
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            tables = sorted(row[0] for row in cursor.fetchall() if not row[0].startswith("sqlite_"))
             conn.close()
             assert tables == ["agent_log", "command_results", "file_cache", "git_state"]
         finally:
@@ -61,14 +57,8 @@ class DescribeOracleStoreInit:
         store = OracleStore(db_path)
         try:
             conn = sqlite3.connect(db_path)
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            )
-            tables = sorted(
-                row[0]
-                for row in cursor.fetchall()
-                if not row[0].startswith("sqlite_")
-            )
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            tables = sorted(row[0] for row in cursor.fetchall() if not row[0].startswith("sqlite_"))
             conn.close()
             assert tables == ["agent_log", "command_results", "file_cache", "git_state"]
         finally:

@@ -35,9 +35,7 @@ class DescribeOracleForget:
         result = cache.smart_read(str(f))  # should return full content
         assert result == "original\n"
 
-    def it_returns_confirmation_message(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_confirmation_message(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "forgettable.py"
         f.write_text("content\n")
         cache.smart_read(str(f))  # populate cache

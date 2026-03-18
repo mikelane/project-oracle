@@ -77,9 +77,7 @@ class GitCache:
         changes: list[str] = []
 
         if current.branch != self._last_snapshot.branch:
-            changes.append(
-                f"Branch changed: {self._last_snapshot.branch} -> {current.branch}"
-            )
+            changes.append(f"Branch changed: {self._last_snapshot.branch} -> {current.branch}")
 
         if current.head_sha != self._last_snapshot.head_sha:
             # Find new commits by diffing the log

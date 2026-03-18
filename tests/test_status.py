@@ -31,9 +31,7 @@ class DescribeOracleStatus:
         assert "uv" in result
         assert "pytest" in result
 
-    def it_includes_git_branch(
-        self, git_project: Path, tmp_path: Path, store: OracleStore
-    ) -> None:
+    def it_includes_git_branch(self, git_project: Path, tmp_path: Path, store: OracleStore) -> None:
         stack = StackInfo(lang="python")
         git_cache = GitCache(store=store, project_root=git_project)
         result = handle_oracle_status(stack, git_cache, store)
@@ -57,17 +55,13 @@ class DescribeOracleStatus:
         result = handle_oracle_status(stack, git_cache, store)
         assert "Dirty" in result
 
-    def it_includes_head_sha(
-        self, git_project: Path, tmp_path: Path, store: OracleStore
-    ) -> None:
+    def it_includes_head_sha(self, git_project: Path, tmp_path: Path, store: OracleStore) -> None:
         stack = StackInfo(lang="python")
         git_cache = GitCache(store=store, project_root=git_project)
         result = handle_oracle_status(stack, git_cache, store)
         assert "HEAD:" in result
 
-    def it_handles_missing_optional_fields(
-        self, tmp_path: Path, store: OracleStore
-    ) -> None:
+    def it_handles_missing_optional_fields(self, tmp_path: Path, store: OracleStore) -> None:
         stack = StackInfo(lang="unknown")
         git_cache = GitCache(store=store, project_root=tmp_path)
         result = handle_oracle_status(stack, git_cache, store)

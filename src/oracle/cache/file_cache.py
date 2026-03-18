@@ -36,6 +36,7 @@ class FileCache:
         self._store = store
         self._compressor = zstd.ZstdCompressor(level=3)
         self._decompressor = zstd.ZstdDecompressor()
+        self._session_seen: set[str] = set()
 
     def smart_read(self, path: str) -> str:
         """Read a file, returning full content on miss or a compact response on hit."""
@@ -67,35 +68,46 @@ class FileCache:
 
         cached = self._store.get_file_cache(path)
 
+        # Cache miss — store and return full content
         if cached is None:
-            # Cache miss: store and return full content
             compressed = self._compressor.compress(content.encode())
             self._store.upsert_file_cache(path, compressed, content_hash, content_hash, now)
+            self._session_seen.add(path)
             return content, 0
 
-        # Cache hit: check if content changed
+        # Cache hit
         cached_content = bytes(cached["content"])  # type: ignore[call-overload]
         last_read = int(cached["last_read"])  # type: ignore[call-overload]
 
         if cached["sha256"] == content_hash:
             # Unchanged
+            if path not in self._session_seen:
+                # First read this session — agent needs full content
+                self._store.upsert_file_cache(
+                    path, cached_content, content_hash, content_hash, now
+                )
+                self._session_seen.add(path)
+                return content, 0
+            # Agent already has content in context — save tokens
             elapsed = now - last_read
             self._store.upsert_file_cache(
-                path,
-                cached_content,
-                content_hash,
-                content_hash,
-                now,
+                path, cached_content, content_hash, content_hash, now
             )
             tokens_saved = len(content) // 4
             return f"No changes since last read ({format_elapsed(elapsed)} ago)", tokens_saved
 
-        # Changed: compute delta
+        # Changed
+        if path not in self._session_seen:
+            # First read this session — agent needs full NEW content, not a delta
+            compressed = self._compressor.compress(content.encode())
+            self._store.upsert_file_cache(path, compressed, content_hash, content_hash, now)
+            self._session_seen.add(path)
+            return content, 0
+        # Agent has old content — return delta
         old_content = self._decompressor.decompress(cached_content).decode()
         delta = _compute_delta(old_content, content)
         compressed = self._compressor.compress(content.encode())
         self._store.upsert_file_cache(path, compressed, content_hash, content_hash, now)
-
         full_tokens = len(content) // 4
         delta_tokens = len(delta) // 4
         tokens_saved = full_tokens - delta_tokens
@@ -104,6 +116,7 @@ class FileCache:
     def forget(self, path: str) -> None:
         """Remove a file from cache. Next smart_read returns full content."""
         self._store.delete_file_cache(path)
+        self._session_seen.discard(path)
 
     def mark_stale(self, path: str, new_disk_hash: str) -> None:
         """Called by FS watcher. Updates disk_sha256 in store."""

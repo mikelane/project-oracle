@@ -208,3 +208,34 @@ class DescribeIngestPipeline:
         response, tokens_saved = project.file_cache.smart_read_with_stats(file_path)
         assert tokens_saved == 0
         assert response == "print('not cached')\n"
+
+
+@pytest.mark.medium
+class DescribeCrossSessionCacheBehavior:
+    def it_returns_content_not_no_changes_in_new_session(
+        self, tmp_path: Path
+    ) -> None:
+        from oracle.storage.store import OracleStore
+
+        # Create a temp file with known content
+        target = tmp_path / "cross_session.py"
+        target.write_text("def greet():\n    return 'hello'\n")
+        file_path = str(target)
+
+        # Shared SQLite store (persists across "sessions")
+        store = OracleStore(tmp_path / "state.db")
+
+        # Session A: populate the cache
+        cache_a = FileCache(store)
+        response_a, tokens_saved_a = cache_a.smart_read_with_stats(file_path)
+        assert tokens_saved_a == 0  # first read is always a miss
+
+        # Session B: new FileCache (fresh Python object), same OracleStore
+        cache_b = FileCache(store)
+        response_b, tokens_saved_b = cache_b.smart_read_with_stats(file_path)
+
+        # Must return actual file content, not "No changes"
+        assert response_b == "def greet():\n    return 'hello'\n"
+        assert tokens_saved_b == 0
+
+        store.close()

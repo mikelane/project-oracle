@@ -54,13 +54,22 @@ Project Oracle (MCP server)
 |-------|-----------|-------------|
 | **Passive learning** | PostToolUse hooks | When the agent uses built-in `Read`/`Grep`/`Bash`, hooks silently feed the results to Oracle's cache |
 | **Active nudging** | PreToolUse AYLO hooks | Before the agent re-reads a file, a question nudges it toward `oracle_read` instead |
-| **Direct tools** | 6 MCP tools | `oracle_read`, `oracle_grep`, `oracle_status`, `oracle_run`, `oracle_ask`, `oracle_forget` |
+| **Direct tools** | 7 MCP tools | `oracle_read`, `oracle_grep`, `oracle_status`, `oracle_run`, `oracle_ask`, `oracle_forget`, `oracle_stats` |
 
 State persists in per-project SQLite databases, so the agent picks up where it left off across sessions.
 
+## Why It Gets Better Over Time
+
+Oracle tracks which files have been returned with full content during the current session (an in-memory `_session_seen` set). This is the key to how savings work:
+
+- **First read of a file in a session:** Always returns full content. If the file is already in the SQLite cache, Oracle validates the stored SHA-256 against the file on disk — a cache hit skips the disk read and decompression, but the agent still gets the complete text it needs to work.
+- **Second+ reads of the same file in a session:** The file is in `_session_seen`. If unchanged, Oracle returns `"No changes since last read"` (~3 tokens). If changed, it returns a compact unified diff.
+- **Mid-session:** Most of the working set is in `_session_seen`. Every re-read costs 3 tokens instead of 800. Agents re-read files constantly — after context compaction, after editing other files, after switching tasks — so this adds up fast.
+- **Cross-session:** The SQLite cache persists between sessions. When a new session starts, `_session_seen` is empty, so the first read of each file returns full content (the agent needs it). But the cache validates files via SHA-256 without redundant disk I/O. `oracle_status` and `oracle_run` return cached project state and command results instantly — no re-running `git status`, no re-discovering the tech stack.
+
 ## Token Savings (Projected)
 
-> **Not yet benchmarked.** Per-operation savings are straightforward math (3-token cache hit vs. 800-token file re-read). Session-level savings depend on how often the agent actually re-reads unchanged files — we'll measure that from `agent_log` data once the server is running in real sessions.
+> **Not yet benchmarked.** Per-operation math is straightforward (3-token cache hit vs. 800-token file re-read). We'll measure real session-level savings from `agent_log` data once the server is deployed.
 
 | Scenario | Without Oracle | With Oracle | Projected Savings |
 |----------|---------------|-------------|-------------------|

@@ -219,6 +219,89 @@ class DescribeFileCacheSizeLimit:
 
 
 @pytest.mark.medium
+class DescribeFileCacheCrossSession:
+    """Cross-session cache behavior: first read in a new session returns full content."""
+
+    def it_returns_full_content_on_first_session_read_even_when_cached(
+        self, store: OracleStore, tmp_path: Path
+    ) -> None:
+        cache_a = FileCache(store)
+        f = tmp_path / "cached_across_sessions.py"
+        f.write_text("hello world\n")
+        cache_a.smart_read_with_stats(str(f))  # populates cache
+
+        # Simulate new session: new FileCache instance, same store
+        cache_b = FileCache(store)
+        response, tokens_saved = cache_b.smart_read_with_stats(str(f))
+        assert response == "hello world\n"
+        assert tokens_saved == 0
+
+    def it_returns_no_changes_on_second_read_in_same_session(
+        self, store: OracleStore, tmp_path: Path
+    ) -> None:
+        cache = FileCache(store)
+        f = tmp_path / "same_session.py"
+        f.write_text("stable content\n")
+        cache.smart_read_with_stats(str(f))  # first read
+        response, tokens_saved = cache.smart_read_with_stats(str(f))  # second read
+        assert response.startswith("No changes")
+        assert tokens_saved > 0
+
+    def it_returns_full_content_in_new_session_when_file_changed(
+        self, store: OracleStore, tmp_path: Path
+    ) -> None:
+        cache_a = FileCache(store)
+        f = tmp_path / "changing_across_sessions.py"
+        f.write_text("version 1\n")
+        cache_a.smart_read_with_stats(str(f))
+
+        # Modify file between sessions
+        f.write_text("version 2\n")
+
+        # New session
+        cache_b = FileCache(store)
+        response, tokens_saved = cache_b.smart_read_with_stats(str(f))
+        assert response == "version 2\n"
+        assert tokens_saved == 0
+
+    def it_tracks_session_seen_independently_per_file(
+        self, store: OracleStore, tmp_path: Path
+    ) -> None:
+        cache = FileCache(store)
+        fa = tmp_path / "file_a.py"
+        fb = tmp_path / "file_b.py"
+        fa.write_text("content a\n")
+        fb.write_text("content b\n")
+
+        # First read of A — full content
+        resp_a, _ = cache.smart_read_with_stats(str(fa))
+        assert resp_a == "content a\n"
+
+        # First read of B — full content (not "No changes")
+        resp_b, _ = cache.smart_read_with_stats(str(fb))
+        assert resp_b == "content b\n"
+
+        # Re-read A — now it returns "No changes"
+        resp_a2, tokens_saved = cache.smart_read_with_stats(str(fa))
+        assert resp_a2.startswith("No changes")
+        assert tokens_saved > 0
+
+    def it_clears_session_seen_on_forget(
+        self, store: OracleStore, tmp_path: Path
+    ) -> None:
+        cache = FileCache(store)
+        f = tmp_path / "forgettable_session.py"
+        f.write_text("remember me\n")
+        cache.smart_read_with_stats(str(f))  # cached + session_seen
+
+        cache.forget(str(f))
+
+        response, tokens_saved = cache.smart_read_with_stats(str(f))
+        assert response == "remember me\n"
+        assert tokens_saved == 0
+
+
+@pytest.mark.medium
 class DescribeFileCacheMarkStale:
     def it_updates_disk_sha256_in_store(
         self, cache: FileCache, store: OracleStore, tmp_path: Path

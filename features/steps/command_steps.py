@@ -29,11 +29,11 @@ def step_oracle_run(context, command):
 
 @given('the agent has run "{command}" before')
 def step_agent_has_run_command(context, command):
+    import contextlib
+
     cache = _get_or_create_command_cache(context)
-    try:
+    with contextlib.suppress(CommandNotAllowedError):
         cache.run_summarized(command)
-    except CommandNotAllowedError:
-        pass
 
 
 @given("no source files have changed")

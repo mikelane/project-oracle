@@ -83,16 +83,12 @@ class FileCache:
             # Unchanged
             if path not in self._session_seen:
                 # First read this session — agent needs full content
-                self._store.upsert_file_cache(
-                    path, cached_content, content_hash, content_hash, now
-                )
+                self._store.upsert_file_cache(path, cached_content, content_hash, content_hash, now)
                 self._session_seen.add(path)
                 return content, 0
             # Agent already has content in context — save tokens
             elapsed = now - last_read
-            self._store.upsert_file_cache(
-                path, cached_content, content_hash, content_hash, now
-            )
+            self._store.upsert_file_cache(path, cached_content, content_hash, content_hash, now)
             tokens_saved = len(content) // 4
             return f"No changes since last read ({format_elapsed(elapsed)} ago)", tokens_saved
 

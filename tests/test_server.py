@@ -159,9 +159,7 @@ class DescribeServerIntegration:
         result = project.file_cache.smart_read(str(tmp_project / "hello.py"))
         assert "print('hello')" in result
 
-    def it_returns_delta_on_reread(
-        self, tmp_project: Path, oracle_dir: Path
-    ) -> None:
+    def it_returns_delta_on_reread(self, tmp_project: Path, oracle_dir: Path) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import _ensure_caches
 
@@ -180,9 +178,7 @@ class DescribeServerIntegration:
         result2 = project.file_cache.smart_read(file_path)
         assert "No changes since last read" in result2
 
-    def it_forgets_and_rereads(
-        self, tmp_project: Path, oracle_dir: Path
-    ) -> None:
+    def it_forgets_and_rereads(self, tmp_project: Path, oracle_dir: Path) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import _ensure_caches
 
@@ -217,9 +213,7 @@ class DescribeServerIntegration:
 class DescribeOracleReadTool:
     """Test the oracle_read tool function directly."""
 
-    def it_returns_file_content_for_valid_path(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_returns_file_content_for_valid_path(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
 
@@ -281,9 +275,7 @@ class DescribeOracleReadTool:
         result = oracle_read(str(project_dir / "foo.py"))
         assert "file cache not initialized" in result.lower()
 
-    def it_rejects_path_outside_project_root(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_rejects_path_outside_project_root(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
 
@@ -312,9 +304,7 @@ class DescribeOracleReadTool:
 class DescribeOracleGrepTool:
     """Test the oracle_grep tool function."""
 
-    def it_delegates_to_handle_oracle_grep(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_delegates_to_handle_oracle_grep(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_grep
 
@@ -472,9 +462,7 @@ class DescribeOracleForgetTool:
         result = oracle_forget(str(no_project / "file.txt"))
         assert "no project detected" in result.lower()
 
-    def it_clears_cache_for_valid_path(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_clears_cache_for_valid_path(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_forget, oracle_read
 
@@ -515,8 +503,7 @@ class DescribeAgentLogging:
         return project
 
     def it_logs_read_interaction_with_session_id(
-        self, tmp_path: Path, oracle_dir: Path, project_dir: Path,
-        mocker: MockerFixture
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path, mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
@@ -538,8 +525,7 @@ class DescribeAgentLogging:
         assert rows[0]["tool_name"] == "oracle_read"
 
     def it_logs_cache_hit_on_reread(
-        self, tmp_path: Path, oracle_dir: Path, project_dir: Path,
-        mocker: MockerFixture
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path, mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read
@@ -557,8 +543,7 @@ class DescribeAgentLogging:
         assert stats["total_tokens_saved"] > 0
 
     def it_logs_grep_as_miss(
-        self, tmp_path: Path, oracle_dir: Path, project_dir: Path,
-        mocker: MockerFixture
+        self, tmp_path: Path, oracle_dir: Path, project_dir: Path, mocker: MockerFixture
     ) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_grep, oracle_read
@@ -610,9 +595,7 @@ class DescribeOracleStatsTool:
         result = oracle_stats()
         assert "no active project" in result.lower()
 
-    def it_returns_stats_for_active_project(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_returns_stats_for_active_project(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read, oracle_stats
 
@@ -631,9 +614,7 @@ class DescribeOracleStatsTool:
         assert "session" in result.lower()
         assert "tool calls:" in result.lower()
 
-    def it_returns_error_when_store_is_none(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_returns_error_when_store_is_none(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_stats
 
@@ -657,9 +638,7 @@ class DescribeOracleStatsTool:
 class DescribeOracleGrepPathConfinement:
     """Test oracle_grep path confinement for non-default paths."""
 
-    def it_rejects_path_outside_project_root(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_rejects_path_outside_project_root(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_grep, oracle_read
 
@@ -721,9 +700,7 @@ class DescribeOracleStatusErrorPaths:
         result = oracle_status()
         assert "git cache not initialized" in result.lower()
 
-    def it_returns_error_when_store_is_none(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_returns_error_when_store_is_none(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.cache.git_cache import GitCache
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_status
@@ -749,9 +726,7 @@ class DescribeOracleStatusErrorPaths:
 class DescribeOracleRunDisallowedCommand:
     """Test oracle_run with a disallowed command."""
 
-    def it_reports_disallowed_command_inline(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_reports_disallowed_command_inline(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry
         from oracle.server import oracle_read, oracle_run
 

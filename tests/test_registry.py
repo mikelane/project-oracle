@@ -79,9 +79,7 @@ class DescribeProjectRegistry:
         result = registry.for_path(tmp_project / "src" / "main.py")
         assert registry.current() is result
 
-    def it_handles_preexisting_project_directory(
-        self, tmp_project: Path, oracle_dir: Path
-    ) -> None:
+    def it_handles_preexisting_project_directory(self, tmp_project: Path, oracle_dir: Path) -> None:
         """Simulates a second session where the project dir already exists on disk.
 
         Ensures mkdir(exist_ok=True) is used so pre-existing directories don't

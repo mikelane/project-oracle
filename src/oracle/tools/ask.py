@@ -124,9 +124,34 @@ def _fallback_grep(question: str, root: Path) -> str:
     """Extract keywords from question and grep for them in source files."""
     # Extract meaningful words (skip common question words)
     stop_words = {
-        "what", "where", "how", "is", "the", "a", "an", "in", "of", "to",
-        "and", "or", "for", "with", "this", "that", "are", "does", "do",
-        "can", "find", "show", "me", "my", "it", "which", "why", "when",
+        "what",
+        "where",
+        "how",
+        "is",
+        "the",
+        "a",
+        "an",
+        "in",
+        "of",
+        "to",
+        "and",
+        "or",
+        "for",
+        "with",
+        "this",
+        "that",
+        "are",
+        "does",
+        "do",
+        "can",
+        "find",
+        "show",
+        "me",
+        "my",
+        "it",
+        "which",
+        "why",
+        "when",
     }
     words = [w.strip("?.,!") for w in question.lower().split()]
     keywords = [w for w in words if w and w not in stop_words]

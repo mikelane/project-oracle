@@ -93,9 +93,7 @@ class DescribeIngestQueue:
         # Non-json file should still exist
         assert (queue_dir / "readme.txt").exists()
 
-    def it_continues_when_unlink_fails(
-        self, tmp_path: Path, mocker: MockerFixture
-    ) -> None:
+    def it_continues_when_unlink_fails(self, tmp_path: Path, mocker: MockerFixture) -> None:
         queue_dir = tmp_path / "ingest"
         queue_dir.mkdir()
         (queue_dir / "001.json").write_text(json.dumps({"a": 1}))

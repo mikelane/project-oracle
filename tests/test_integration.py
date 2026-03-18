@@ -93,15 +93,9 @@ class DescribeLoggingPipeline:
         now = int(time.time())
 
         # Log 3 interactions with different tool_names
-        project.store.log_interaction(
-            session_id, "oracle_read", "src/main.py", True, 500, now
-        )
-        project.store.log_interaction(
-            session_id, "oracle_run", "git status", False, 0, now
-        )
-        project.store.log_interaction(
-            session_id, "oracle_grep", "pattern", True, 200, now
-        )
+        project.store.log_interaction(session_id, "oracle_read", "src/main.py", True, 500, now)
+        project.store.log_interaction(session_id, "oracle_run", "git status", False, 0, now)
+        project.store.log_interaction(session_id, "oracle_grep", "pattern", True, 200, now)
 
         stats = project.store.get_session_stats(session_id)
         assert stats["total_cache_hits"] == 2
@@ -157,10 +151,13 @@ class DescribeIngestPipeline:
         file_path = str(target)
 
         # Write a Read-type JSON into the ingest queue
-        self._enqueue(oracle_dir, {
-            "tool_name": "Read",
-            "tool_input": {"file_path": file_path},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": file_path},
+            },
+        )
 
         # Pre-register the project so registry.for_path works during ingest
         project = registry.for_path(target)
@@ -189,10 +186,13 @@ class DescribeIngestPipeline:
         file_path = str(target)
 
         # Enqueue a Grep-type entry (not Read)
-        self._enqueue(oracle_dir, {
-            "tool_name": "Grep",
-            "tool_input": {"pattern": "hello", "path": str(project_dir)},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Grep",
+                "tool_input": {"pattern": "hello", "path": str(project_dir)},
+            },
+        )
 
         # Pre-register project
         project = registry.for_path(target)
@@ -212,9 +212,7 @@ class DescribeIngestPipeline:
 
 @pytest.mark.medium
 class DescribeCrossSessionCacheBehavior:
-    def it_returns_content_not_no_changes_in_new_session(
-        self, tmp_path: Path
-    ) -> None:
+    def it_returns_content_not_no_changes_in_new_session(self, tmp_path: Path) -> None:
         from oracle.storage.store import OracleStore
 
         # Create a temp file with known content

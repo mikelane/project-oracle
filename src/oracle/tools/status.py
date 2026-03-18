@@ -7,9 +7,7 @@ from oracle.project import StackInfo
 from oracle.storage.store import OracleStore
 
 
-def handle_oracle_status(
-    stack: StackInfo, git_cache: GitCache, store: OracleStore
-) -> str:
+def handle_oracle_status(stack: StackInfo, git_cache: GitCache, store: OracleStore) -> str:
     """Return formatted project status: stack, git state, clean/dirty."""
     snapshot = git_cache.refresh()
 

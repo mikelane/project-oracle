@@ -74,12 +74,25 @@ class DescribeFormatElapsed:
 class DescribeDangerousCharsRegex:
     @pytest.mark.parametrize(
         "char",
-        [";", "&", "|", "`", "$", "(", ")", ">", "<", "{", "}", "!", "#", "~",
-         "\n", "\r", "\t"],
+        [";", "&", "|", "`", "$", "(", ")", ">", "<", "{", "}", "!", "#", "~", "\n", "\r", "\t"],
         ids=[
-            "semicolon", "ampersand", "pipe", "backtick", "dollar", "open_paren",
-            "close_paren", "gt_redirect", "lt_redirect", "open_brace", "close_brace",
-            "bang", "hash", "tilde", "newline", "carriage_return", "tab",
+            "semicolon",
+            "ampersand",
+            "pipe",
+            "backtick",
+            "dollar",
+            "open_paren",
+            "close_paren",
+            "gt_redirect",
+            "lt_redirect",
+            "open_brace",
+            "close_brace",
+            "bang",
+            "hash",
+            "tilde",
+            "newline",
+            "carriage_return",
+            "tab",
         ],
     )
     def it_matches_dangerous_shell_characters(self, char: str) -> None:
@@ -143,9 +156,7 @@ class DescribeCommandAllowlist:
         cache = CommandCache(store, project, extra_allowed=["make"])
         assert cache.is_allowed("make build") is True
 
-    def it_retains_defaults_with_custom_entries(
-        self, store: OracleStore, project: Path
-    ) -> None:
+    def it_retains_defaults_with_custom_entries(self, store: OracleStore, project: Path) -> None:
         cache = CommandCache(store, project, extra_allowed=["make"])
         assert cache.is_allowed("pytest") is True
         assert cache.is_allowed("make build") is True
@@ -190,9 +201,7 @@ class DescribeShellInjectionHardening:
             "background_ampersand",
         ],
     )
-    def it_raises_on_run_summarized_with_injection(
-        self, cmd: str, cache: CommandCache
-    ) -> None:
+    def it_raises_on_run_summarized_with_injection(self, cmd: str, cache: CommandCache) -> None:
         with pytest.raises(CommandNotAllowedError):
             cache.run_summarized(cmd)
 
@@ -226,9 +235,7 @@ class DescribeShellInjectionHardening:
     def it_rejects_commands_with_tilde(self, cache: CommandCache) -> None:
         assert cache.is_allowed("pytest ~/evil") is False
 
-    def it_raises_on_newline_injection_in_run_summarized(
-        self, cache: CommandCache
-    ) -> None:
+    def it_raises_on_newline_injection_in_run_summarized(self, cache: CommandCache) -> None:
         with pytest.raises(CommandNotAllowedError):
             cache.run_summarized("pytest --version\nrm -rf /")
 
@@ -261,9 +268,7 @@ class DescribeCommandCacheRun:
         result = cache.run_summarized("echo hello world")
         assert "hello world" in result
 
-    def it_returns_cached_result_when_unchanged(
-        self, cache: CommandCache, project: Path
-    ) -> None:
+    def it_returns_cached_result_when_unchanged(self, cache: CommandCache, project: Path) -> None:
         # First run
         cache.run_summarized("echo cached-test")
         # Second run without changing source files
@@ -271,9 +276,7 @@ class DescribeCommandCacheRun:
         assert "Cached result" in result
         assert "cached-test" in result
 
-    def it_reruns_when_source_files_change(
-        self, cache: CommandCache, project: Path
-    ) -> None:
+    def it_reruns_when_source_files_change(self, cache: CommandCache, project: Path) -> None:
         cache.run_summarized("echo rerun-test")
         # Modify a source file to change the hash
         src_file = project / "src" / "app.py"
@@ -291,24 +294,18 @@ class DescribeCommandCacheRun:
         # Generate output longer than 2000 chars
         # echo with a long repeated string
         long_content = "x" * 3000
-        (project / "src" / "longoutput.py").write_text(
-            f"# {long_content}\n"
-        )
+        (project / "src" / "longoutput.py").write_text(f"# {long_content}\n")
         result = cache.run_summarized(f"echo {'A' * 3000}")
         assert len(result) <= 2000
 
-    def it_handles_command_timeout(
-        self, cache: CommandCache, mocker: MockerFixture
-    ) -> None:
+    def it_handles_command_timeout(self, cache: CommandCache, mocker: MockerFixture) -> None:
         # Patch subprocess.run to raise TimeoutExpired
         mock_run = mocker.patch("oracle.cache.command_cache.subprocess.run")
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 999", timeout=120)
         result = cache.run_summarized("echo timeout-test")
         assert "timed out" in result.lower()
 
-    def it_includes_stderr_in_output(
-        self, cache: CommandCache, mocker: MockerFixture
-    ) -> None:
+    def it_includes_stderr_in_output(self, cache: CommandCache, mocker: MockerFixture) -> None:
         # Use a command that writes to stderr
         # "echo msg >&2" contains &, which is blocked by chain operators.
         # Instead, patch subprocess.run to return stderr.
@@ -395,9 +392,7 @@ class DescribeSourceFileHashing:
         hash2 = cache._hash_source_files()
         assert hash1 != hash2
 
-    def it_ignores_non_source_extension_files(
-        self, cache: CommandCache, project: Path
-    ) -> None:
+    def it_ignores_non_source_extension_files(self, cache: CommandCache, project: Path) -> None:
         hash1 = cache._hash_source_files()
         # Add a non-source file -- should not change the hash
         (project / "src" / "README.md").write_text("# Docs\n")

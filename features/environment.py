@@ -1,4 +1,5 @@
 """Behave environment setup — creates temp directories for each scenario."""
+
 import shutil
 import tempfile
 from pathlib import Path

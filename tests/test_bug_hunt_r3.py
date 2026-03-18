@@ -62,17 +62,13 @@ class DescribeFileCachePermissionDenied:
     is NOT caught. If the file exists and is under the size limit but is not
     readable, read_text() raises PermissionError and the function crashes."""
 
-    def it_returns_error_when_file_is_not_readable(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_error_when_file_is_not_readable(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "noperm.py"
         f.write_text("secret\n")
         f.chmod(0o000)
         try:
             result, tokens_saved = cache.smart_read_with_stats(str(f))
-            assert "error" in result.lower(), (
-                f"Expected error for unreadable file, got: {result}"
-            )
+            assert "error" in result.lower(), f"Expected error for unreadable file, got: {result}"
             assert tokens_saved == 0
         finally:
             f.chmod(0o644)

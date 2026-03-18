@@ -114,9 +114,7 @@ class OracleStore:
         return [row[0] for row in rows]
 
     def get_file_cache(self, path: str) -> dict[str, object] | None:
-        row = self._conn.execute(
-            "SELECT * FROM file_cache WHERE path = ?", (path,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM file_cache WHERE path = ?", (path,)).fetchone()
         if row is None:
             return None
         return dict(row)
@@ -213,18 +211,14 @@ class OracleStore:
         return row["cnt"] if row is not None else 0
 
     def get_cumulative_call_count(self) -> int:
-        row = self._conn.execute(
-            "SELECT COUNT(*) AS cnt FROM agent_log"
-        ).fetchone()
+        row = self._conn.execute("SELECT COUNT(*) AS cnt FROM agent_log").fetchone()
         return row["cnt"] if row is not None else 0
 
     def evict_stale_files(self, max_age_days: int = 30, now: int | None = None) -> int:
         if now is None:
             now = int(time.time())
         cutoff = now - (max_age_days * 86400)
-        cursor = self._conn.execute(
-            "DELETE FROM file_cache WHERE last_read < ?", (cutoff,)
-        )
+        cursor = self._conn.execute("DELETE FROM file_cache WHERE last_read < ?", (cutoff,))
         self._conn.commit()
         return cursor.rowcount
 
@@ -232,8 +226,6 @@ class OracleStore:
         if now is None:
             now = int(time.time())
         cutoff = now - (max_age_hours * 3600)
-        cursor = self._conn.execute(
-            "DELETE FROM command_results WHERE ran_at < ?", (cutoff,)
-        )
+        cursor = self._conn.execute("DELETE FROM command_results WHERE ran_at < ?", (cutoff,))
         self._conn.commit()
         return cursor.rowcount

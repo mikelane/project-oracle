@@ -43,9 +43,7 @@ class DescribeCommandRun:
         with pytest.raises(CommandNotAllowedError):
             cache.run_summarized("curl https://evil.com")
 
-    def it_returns_cached_result_on_repeat(
-        self, cache: CommandCache, project: Path
-    ) -> None:
+    def it_returns_cached_result_on_repeat(self, cache: CommandCache, project: Path) -> None:
         first = cache.run_summarized("echo deterministic")
         second = cache.run_summarized("echo deterministic")
         assert "deterministic" in first

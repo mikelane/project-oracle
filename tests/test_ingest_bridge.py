@@ -46,10 +46,13 @@ class DescribeProcessIngest:
         from oracle.registry import ProjectRegistry
 
         file_path = str(project_dir / "hello.py")
-        self._enqueue(oracle_dir, {
-            "tool_name": "Read",
-            "tool_input": {"file_path": file_path},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": file_path},
+            },
+        )
 
         registry = ProjectRegistry(oracle_dir)
         # Pre-register project so registry.for_path works
@@ -74,14 +77,20 @@ class DescribeProcessIngest:
     ) -> None:
         from oracle.registry import ProjectRegistry
 
-        self._enqueue(oracle_dir, {
-            "tool_name": "Bash",
-            "tool_input": {"command": "ls"},
-        })
-        self._enqueue(oracle_dir, {
-            "tool_name": "Grep",
-            "tool_input": {"pattern": "hello"},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            },
+        )
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Grep",
+                "tool_input": {"pattern": "hello"},
+            },
+        )
 
         registry = ProjectRegistry(oracle_dir)
 
@@ -95,10 +104,13 @@ class DescribeProcessIngest:
         from oracle.registry import ProjectRegistry
 
         nonexistent = str(project_dir / "does_not_exist.py")
-        self._enqueue(oracle_dir, {
-            "tool_name": "Read",
-            "tool_input": {"file_path": nonexistent},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": nonexistent},
+            },
+        )
 
         registry = ProjectRegistry(oracle_dir)
 
@@ -106,9 +118,7 @@ class DescribeProcessIngest:
 
         assert count == 0
 
-    def it_handles_empty_queue(
-        self, tmp_path: Path, oracle_dir: Path
-    ) -> None:
+    def it_handles_empty_queue(self, tmp_path: Path, oracle_dir: Path) -> None:
         from oracle.registry import ProjectRegistry
 
         registry = ProjectRegistry(oracle_dir)
@@ -117,15 +127,16 @@ class DescribeProcessIngest:
 
         assert count == 0
 
-    def it_skips_read_entry_with_no_file_path(
-        self, tmp_path: Path, oracle_dir: Path
-    ) -> None:
+    def it_skips_read_entry_with_no_file_path(self, tmp_path: Path, oracle_dir: Path) -> None:
         from oracle.registry import ProjectRegistry
 
-        self._enqueue(oracle_dir, {
-            "tool_name": "Read",
-            "tool_input": {},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Read",
+                "tool_input": {},
+            },
+        )
 
         registry = ProjectRegistry(oracle_dir)
 
@@ -133,9 +144,7 @@ class DescribeProcessIngest:
 
         assert count == 0
 
-    def it_skips_file_with_no_project_detected(
-        self, tmp_path: Path, oracle_dir: Path
-    ) -> None:
+    def it_skips_file_with_no_project_detected(self, tmp_path: Path, oracle_dir: Path) -> None:
         from oracle.registry import ProjectRegistry
 
         # Create a file outside any project (no .git or project markers)
@@ -144,10 +153,13 @@ class DescribeProcessIngest:
         orphan = bare_dir / "orphan.py"
         orphan.write_text("x = 1\n")
 
-        self._enqueue(oracle_dir, {
-            "tool_name": "Read",
-            "tool_input": {"file_path": str(orphan)},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": str(orphan)},
+            },
+        )
 
         registry = ProjectRegistry(oracle_dir)
 
@@ -161,10 +173,13 @@ class DescribeProcessIngest:
         from oracle.registry import ProjectRegistry
 
         file_path = str(project_dir / "hello.py")
-        self._enqueue(oracle_dir, {
-            "tool_name": "Read",
-            "tool_input": {"file_path": file_path},
-        })
+        self._enqueue(
+            oracle_dir,
+            {
+                "tool_name": "Read",
+                "tool_input": {"file_path": file_path},
+            },
+        )
 
         registry = ProjectRegistry(oracle_dir)
 

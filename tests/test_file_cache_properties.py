@@ -18,9 +18,7 @@ from oracle.storage.store import OracleStore
 class DescribeFileCacheProperties:
     @given(content=st.text(min_size=1, max_size=10000))
     @settings(max_examples=200)
-    def it_round_trips_any_content_through_compression(
-        self, content: str
-    ) -> None:
+    def it_round_trips_any_content_through_compression(self, content: str) -> None:
         """Write content to file, smart_read, verify matches what read_text returns.
 
         Note: write_text/read_text normalize line endings (e.g. \\r -> \\n),
@@ -43,18 +41,14 @@ class DescribeFileCacheProperties:
         old=st.text(min_size=1, max_size=5000),
         new=st.text(min_size=1, max_size=5000),
     )
-    def it_produces_a_string_delta_for_any_content_pair(
-        self, old: str, new: str
-    ) -> None:
+    def it_produces_a_string_delta_for_any_content_pair(self, old: str, new: str) -> None:
         """_compute_delta always returns a string, never crashes."""
         delta = _compute_delta(old, new)
         assert isinstance(delta, str)
 
     @given(content=st.text(min_size=1, max_size=5000))
     @settings(max_examples=200)
-    def it_always_returns_no_changes_on_immediate_reread(
-        self, content: str
-    ) -> None:
+    def it_always_returns_no_changes_on_immediate_reread(self, content: str) -> None:
         """First read, then immediate second read, always 'No changes'."""
         tmp = Path(tempfile.mkdtemp())
         try:

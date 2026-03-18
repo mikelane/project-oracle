@@ -36,9 +36,7 @@ class DescribeConcurrentReads:
             s.close()
             return result
 
-        results = await asyncio.gather(
-            *[asyncio.to_thread(read_in_thread, i) for i in range(10)]
-        )
+        results = await asyncio.gather(*[asyncio.to_thread(read_in_thread, i) for i in range(10)])
         # Each thread has a fresh FileCache (new session), so gets full content
         # (not "No changes"). Verify no corruption: all results are identical.
         assert all(r == results[0] for r in results)
@@ -51,9 +49,7 @@ class DescribeConcurrentIngest:
         queue_dir.mkdir()
 
         def write_entry(i: int) -> None:
-            (queue_dir / f"{i:010d}.json").write_text(
-                f'{{"tool_name": "Read", "id": {i}}}'
-            )
+            (queue_dir / f"{i:010d}.json").write_text(f'{{"tool_name": "Read", "id": {i}}}')
 
         threads = [threading.Thread(target=write_entry, args=(i,)) for i in range(50)]
         for t in threads:

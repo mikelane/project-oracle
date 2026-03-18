@@ -58,9 +58,15 @@ Project Oracle (MCP server)
 
 State persists in per-project SQLite databases, so the agent picks up where it left off across sessions.
 
+## Why It Gets Better Over Time
+
+The first read of every file is a cache miss — full cost. But agents revisit files constantly: read a file, make changes elsewhere, context compacts, read the same file again. Each re-read after the first costs 3 tokens instead of 800. By mid-session most of the working set is cached, and the savings per tool call approach 99%.
+
+The real payoff is cross-session. Oracle persists its cache in SQLite, so the second session on the same project starts warm. No re-reading configs. No re-running `git status`. No re-discovering the tech stack. The agent resumes where it left off instead of paying the full discovery cost again.
+
 ## Token Savings (Projected)
 
-> **Not yet benchmarked.** Per-operation savings are straightforward math (3-token cache hit vs. 800-token file re-read). Session-level savings depend on how often the agent actually re-reads unchanged files — we'll measure that from `agent_log` data once the server is running in real sessions.
+> **Not yet benchmarked.** Per-operation math is straightforward (3-token cache hit vs. 800-token file re-read). We'll measure real session-level savings from `agent_log` data once the server is deployed.
 
 | Scenario | Without Oracle | With Oracle | Projected Savings |
 |----------|---------------|-------------|-------------------|

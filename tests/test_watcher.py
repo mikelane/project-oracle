@@ -87,9 +87,7 @@ class DescribeOracleWatcher:
     def it_suppresses_exceptions_from_awatch(self, mocker: MockerFixture) -> None:
         async def _inner() -> None:
             watcher = OracleWatcher(Path("/project"), lambda _: None)
-            mock_awatch = mocker.patch(
-                "oracle.watcher.awatch", new_callable=mocker.AsyncMock
-            )
+            mock_awatch = mocker.patch("oracle.watcher.awatch", new_callable=mocker.AsyncMock)
             mock_awatch.side_effect = RuntimeError("watcher crashed")
             await watcher.start()
 

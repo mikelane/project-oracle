@@ -61,9 +61,7 @@ class DescribeComputeDelta:
 
 @pytest.mark.medium
 class DescribeFileCacheRead:
-    def it_returns_full_content_on_first_read(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_full_content_on_first_read(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "hello.py"
         f.write_text("print('hello')\n")
         result = cache.smart_read(str(f))
@@ -78,9 +76,7 @@ class DescribeFileCacheRead:
         result = cache.smart_read(str(f))  # second read, unchanged
         assert result.startswith("No changes since last read")
 
-    def it_returns_delta_when_file_has_changed(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_delta_when_file_has_changed(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "changing.py"
         f.write_text("line1\nline2\nline3\n")
         cache.smart_read(str(f))  # populate cache
@@ -90,9 +86,7 @@ class DescribeFileCacheRead:
         assert "-line2" in result
         assert "+modified" in result
 
-    def it_returns_error_for_nonexistent_file(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_error_for_nonexistent_file(self, cache: FileCache, tmp_path: Path) -> None:
         missing = tmp_path / "ghost.py"
         result = cache.smart_read(str(missing))
         assert result == f"Error: file not found: {missing}"
@@ -110,9 +104,7 @@ class DescribeFileCacheRead:
 
 @pytest.mark.medium
 class DescribeFileCacheForget:
-    def it_forces_full_reread_after_forget(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_forces_full_reread_after_forget(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "forgettable.py"
         f.write_text("original\n")
         cache.smart_read(str(f))  # populate cache
@@ -120,18 +112,14 @@ class DescribeFileCacheForget:
         result = cache.smart_read(str(f))  # should return full content, not "No changes"
         assert result == "original\n"
 
-    def it_is_noop_for_nonexistent_path(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_is_noop_for_nonexistent_path(self, cache: FileCache, tmp_path: Path) -> None:
         # Should not raise
         cache.forget(str(tmp_path / "never_cached.py"))
 
 
 @pytest.mark.medium
 class DescribeFileCacheTokenEstimate:
-    def it_reports_tokens_saved_on_cache_hit(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_reports_tokens_saved_on_cache_hit(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "tokens.py"
         content = "a" * 400  # 400 chars => ~100 tokens
         f.write_text(content)
@@ -140,9 +128,7 @@ class DescribeFileCacheTokenEstimate:
         assert tokens_saved == len(content) // 4
         assert tokens_saved == 100
 
-    def it_reports_zero_tokens_on_first_read(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_reports_zero_tokens_on_first_read(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "first.py"
         f.write_text("new content\n")
         _response, tokens_saved = cache.smart_read_with_stats(str(f))
@@ -157,9 +143,7 @@ class DescribeFileCacheTokenEstimate:
         _, tokens_saved = cache.smart_read_with_stats(str(f))
         assert isinstance(tokens_saved, int)
 
-    def it_returns_integer_token_estimates_on_delta(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_integer_token_estimates_on_delta(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "int_delta.py"
         # Large file with many unique lines so the delta is small
         lines = [f"def func_{i}(): return {i}" for i in range(200)]
@@ -190,9 +174,7 @@ class DescribeFileCacheTokenEstimate:
 
 @pytest.mark.medium
 class DescribeFileCacheSizeLimit:
-    def it_rejects_files_exceeding_size_limit(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_rejects_files_exceeding_size_limit(self, cache: FileCache, tmp_path: Path) -> None:
         from oracle.cache.file_cache import _MAX_FILE_SIZE
 
         f = tmp_path / "huge.bin"
@@ -205,9 +187,7 @@ class DescribeFileCacheSizeLimit:
         assert "file too large" in result.lower()
         assert tokens_saved == 0
 
-    def it_accepts_files_at_the_size_limit(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_accepts_files_at_the_size_limit(self, cache: FileCache, tmp_path: Path) -> None:
         from oracle.cache.file_cache import _MAX_FILE_SIZE
 
         f = tmp_path / "borderline.txt"
@@ -286,9 +266,7 @@ class DescribeFileCacheCrossSession:
         assert resp_a2.startswith("No changes")
         assert tokens_saved > 0
 
-    def it_clears_session_seen_on_forget(
-        self, store: OracleStore, tmp_path: Path
-    ) -> None:
+    def it_clears_session_seen_on_forget(self, store: OracleStore, tmp_path: Path) -> None:
         cache = FileCache(store)
         f = tmp_path / "forgettable_session.py"
         f.write_text("remember me\n")

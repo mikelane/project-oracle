@@ -32,15 +32,21 @@ def git_project(tmp_path: Path) -> Path:
     subprocess.run(["git", "init"], cwd=project, capture_output=True, check=True)
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
-        cwd=project, capture_output=True, check=True,
+        cwd=project,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test"],
-        cwd=project, capture_output=True, check=True,
+        cwd=project,
+        capture_output=True,
+        check=True,
     )
     subprocess.run(
         ["git", "config", "commit.gpgsign", "false"],
-        cwd=project, capture_output=True, check=True,
+        cwd=project,
+        capture_output=True,
+        check=True,
     )
     (project / "src").mkdir()
     (project / "src" / "main.py").write_text("def hello():\n    return 'world'\n")
@@ -48,7 +54,9 @@ def git_project(tmp_path: Path) -> Path:
     subprocess.run(["git", "add", "."], cwd=project, capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", "initial"],
-        cwd=project, capture_output=True, check=True,
+        cwd=project,
+        capture_output=True,
+        check=True,
     )
     return project
 
@@ -97,9 +105,7 @@ class DescribeOracleAsk:
         assert "python" in result.lower()
 
     @pytest.mark.asyncio
-    async def it_returns_project_overview_with_stack_info(
-        self, mock_project: ProjectState
-    ) -> None:
+    async def it_returns_project_overview_with_stack_info(self, mock_project: ProjectState) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
         result = await handle_oracle_ask("give me an overview", mock_project)
@@ -107,9 +113,7 @@ class DescribeOracleAsk:
         assert "uv" in result.lower()
 
     @pytest.mark.asyncio
-    async def it_falls_back_to_grep_without_chunkhound(
-        self, mock_project: ProjectState
-    ) -> None:
+    async def it_falls_back_to_grep_without_chunkhound(self, mock_project: ProjectState) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
         # Code understanding question with no chunkhound → grep fallback
@@ -124,9 +128,11 @@ class DescribeOracleAsk:
         from oracle.tools.ask import handle_oracle_ask
 
         mock_ch = mocker.AsyncMock(spec=ChunkhoundClient)
-        mock_ch.search = mocker.AsyncMock(return_value=[
-            {"file": "auth.py", "snippet": "def authenticate(user):"},
-        ])
+        mock_ch.search = mocker.AsyncMock(
+            return_value=[
+                {"file": "auth.py", "snippet": "def authenticate(user):"},
+            ]
+        )
         mock_project.chunkhound = mock_ch
 
         result = await handle_oracle_ask("find the auth handler", mock_project)
@@ -184,9 +190,7 @@ class DescribeOracleAsk:
         mock_client.messages.create.return_value = mock_message
 
         mocker.patch("oracle.tools.ask.anthropic.Anthropic", return_value=mock_client)
-        result = await handle_oracle_ask(
-            "what is the meaning of life?", mock_project
-        )
+        result = await handle_oracle_ask("what is the meaning of life?", mock_project)
         assert "42" in result
 
     @pytest.mark.asyncio
@@ -203,9 +207,7 @@ class DescribeOracleAsk:
             "oracle.tools.ask.anthropic.Anthropic",
             side_effect=Exception("API key not set"),
         )
-        result = await handle_oracle_ask(
-            "what is the meaning of life?", mock_project
-        )
+        result = await handle_oracle_ask("what is the meaning of life?", mock_project)
         assert "unable" in result.lower() or "error" in result.lower()
 
 
@@ -216,8 +218,11 @@ class DescribeProjectOverview:
         from oracle.tools.ask import handle_oracle_ask
 
         mock_project.stack = StackInfo(
-            lang="python", pkg_mgr="uv", test_cmd="pytest",
-            lint_cmd="ruff check", type_cmd="mypy",
+            lang="python",
+            pkg_mgr="uv",
+            test_cmd="pytest",
+            lint_cmd="ruff check",
+            type_cmd="mypy",
         )
         result = await handle_oracle_ask("what's the project structure?", mock_project)
         assert "ruff check" in result
@@ -227,9 +232,7 @@ class DescribeProjectOverview:
 class DescribeReadinessCheck:
     @pytest.mark.asyncio
     @pytest.mark.medium
-    async def it_reports_dirty_files_as_not_ready(
-        self, mock_project: ProjectState
-    ) -> None:
+    async def it_reports_dirty_files_as_not_ready(self, mock_project: ProjectState) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
         # Create a dirty file
@@ -254,9 +257,7 @@ class DescribeReadinessCheck:
 class DescribeTestStatus:
     @pytest.mark.asyncio
     @pytest.mark.medium
-    async def it_reports_test_command_when_available(
-        self, mock_project: ProjectState
-    ) -> None:
+    async def it_reports_test_command_when_available(self, mock_project: ProjectState) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
         result = await handle_oracle_ask("are tests passing?", mock_project)
@@ -282,9 +283,7 @@ class DescribeTestStatus:
         # Seed a cached test result
         assert mock_project.command_cache is not None
         assert mock_project.store is not None
-        mock_project.store.upsert_command_result(
-            "pytest", "5 passed", 0, "abc123", 1000000
-        )
+        mock_project.store.upsert_command_result("pytest", "5 passed", 0, "abc123", 1000000)
         result = await handle_oracle_ask("are tests passing?", mock_project)
         assert "5 passed" in result
 
@@ -328,7 +327,9 @@ class DescribeReadinessWithStagedFiles:
         new_file.write_text("x = 1\n")
         subprocess.run(
             ["git", "add", "staged.py"],
-            cwd=mock_project.root, capture_output=True, check=True,
+            cwd=mock_project.root,
+            capture_output=True,
+            check=True,
         )
         result = await handle_oracle_ask("ready to push?", mock_project)
         assert "staged" in result.lower()
@@ -365,9 +366,7 @@ class DescribeFallbackGrep:
     async def it_handles_grep_no_results(self, mock_project: ProjectState) -> None:
         from oracle.tools.ask import handle_oracle_ask
 
-        result = await handle_oracle_ask(
-            "where is totallyuniquenonexistentfunction?", mock_project
-        )
+        result = await handle_oracle_ask("where is totallyuniquenonexistentfunction?", mock_project)
         assert "no matches" in result.lower()
 
     @pytest.mark.asyncio
@@ -403,9 +402,7 @@ class DescribeFallbackGrep:
         mock_result.returncode = 1
         mock_result.stdout = ""
         mocker.patch("oracle.tools.ask.subprocess.run", return_value=mock_result)
-        result = await handle_oracle_ask(
-            "explain xyznonexistent logic", mock_project
-        )
+        result = await handle_oracle_ask("explain xyznonexistent logic", mock_project)
         assert "no matches" in result.lower()
 
     @pytest.mark.asyncio
@@ -420,9 +417,7 @@ class DescribeFallbackGrep:
         mock_result.returncode = 0
         mock_result.stdout = "   "  # Whitespace only
         mocker.patch("oracle.tools.ask.subprocess.run", return_value=mock_result)
-        result = await handle_oracle_ask(
-            "explain xyznonexistent logic", mock_project
-        )
+        result = await handle_oracle_ask("explain xyznonexistent logic", mock_project)
         assert "no matches" in result.lower()
 
 
@@ -528,7 +523,5 @@ class DescribeHaikuFallback:
         mock_client.messages.create.return_value = mock_message
 
         mocker.patch("oracle.tools.ask.anthropic.Anthropic", return_value=mock_client)
-        result = await handle_oracle_ask(
-            "what is the meaning of life?", mock_project
-        )
+        result = await handle_oracle_ask("what is the meaning of life?", mock_project)
         assert "unable" in result.lower()

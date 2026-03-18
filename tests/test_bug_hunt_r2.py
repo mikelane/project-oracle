@@ -162,9 +162,7 @@ class DescribeCommandCacheMissingBinary:
     ) -> None:
         # Add a nonexistent command to the allowlist
         cache = CommandCache(store, cmd_project, extra_allowed=["nonexistent_tool_xyz"])
-        output, is_hit, tokens = cache.run_summarized_with_stats(
-            "nonexistent_tool_xyz --version"
-        )
+        output, is_hit, tokens = cache.run_summarized_with_stats("nonexistent_tool_xyz --version")
         # Should return an error message, not crash with FileNotFoundError
         assert "error" in output.lower()
         assert is_hit is False

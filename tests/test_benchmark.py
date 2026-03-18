@@ -21,9 +21,7 @@ class DescribeTokenSavingsBenchmark:
         f.write_text("\n".join(lines) + "\n")
         return f
 
-    def it_saves_tokens_on_unchanged_reread(
-        self, large_file: Path, tmp_path: Path
-    ) -> None:
+    def it_saves_tokens_on_unchanged_reread(self, large_file: Path, tmp_path: Path) -> None:
         store = OracleStore(tmp_path / "state.db")
         cache = FileCache(store)
         first_result = cache.smart_read(str(large_file))
@@ -33,9 +31,7 @@ class DescribeTokenSavingsBenchmark:
         assert len(second_result) < len(first_result) * 0.5  # significantly smaller
         store.close()
 
-    def it_saves_tokens_on_small_change(
-        self, large_file: Path, tmp_path: Path
-    ) -> None:
+    def it_saves_tokens_on_small_change(self, large_file: Path, tmp_path: Path) -> None:
         store = OracleStore(tmp_path / "state.db")
         cache = FileCache(store)
         cache.smart_read(str(large_file))
@@ -47,9 +43,7 @@ class DescribeTokenSavingsBenchmark:
         assert "changed" in result.lower()
         store.close()
 
-    def it_simulates_session_with_rereads(
-        self, large_file: Path, tmp_path: Path
-    ) -> None:
+    def it_simulates_session_with_rereads(self, large_file: Path, tmp_path: Path) -> None:
         """Simulate repeated reads typical of a coding session."""
         store = OracleStore(tmp_path / "state.db")
         cache = FileCache(store)

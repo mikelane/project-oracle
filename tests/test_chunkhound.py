@@ -13,9 +13,7 @@ from oracle.integrations.chunkhound import ChunkhoundClient
 class DescribeChunkhoundClient:
     @pytest.mark.asyncio
     @pytest.mark.medium
-    async def it_fails_gracefully_when_not_installed(
-        self, mocker: MockerFixture
-    ) -> None:
+    async def it_fails_gracefully_when_not_installed(self, mocker: MockerFixture) -> None:
         mocker.patch(
             "oracle.integrations.chunkhound.asyncio.wait_for",
             new_callable=mocker.AsyncMock,
@@ -34,9 +32,7 @@ class DescribeChunkhoundClient:
 
     @pytest.mark.asyncio
     @pytest.mark.medium
-    async def it_starts_successfully_when_binary_exists(
-        self, mocker: MockerFixture
-    ) -> None:
+    async def it_starts_successfully_when_binary_exists(self, mocker: MockerFixture) -> None:
         mock_process = mocker.AsyncMock()
         mocker.patch(
             "oracle.integrations.chunkhound.asyncio.wait_for",
@@ -58,9 +54,7 @@ class DescribeChunkhoundClient:
         assert result is True
 
     @pytest.mark.asyncio
-    async def it_returns_empty_list_when_started_but_v1(
-        self, mocker: MockerFixture
-    ) -> None:
+    async def it_returns_empty_list_when_started_but_v1(self, mocker: MockerFixture) -> None:
         """V1 chunkhound search always returns empty (best-effort stub)."""
         client = ChunkhoundClient("/fake/path")
         client._started = True

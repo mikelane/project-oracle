@@ -68,9 +68,7 @@ class DescribeIngestBridgeToolInputNotDict:
     calling .get() on it raises AttributeError.
     """
 
-    def it_handles_non_dict_tool_input_without_crashing(
-        self, tmp_path: Path
-    ) -> None:
+    def it_handles_non_dict_tool_input_without_crashing(self, tmp_path: Path) -> None:
         from oracle.ingest_bridge import process_ingest
         from oracle.registry import ProjectRegistry
 

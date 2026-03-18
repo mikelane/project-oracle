@@ -26,9 +26,7 @@ def cache(store: OracleStore) -> FileCache:
 
 @pytest.mark.medium
 class DescribeFileRead:
-    def it_returns_full_content_on_first_read(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_full_content_on_first_read(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "hello.py"
         f.write_text("print('hello')\n")
         result = cache.smart_read(str(f))
@@ -43,18 +41,14 @@ class DescribeFileRead:
         assert "Changed since last read:" in result
         assert "+modified" in result
 
-    def it_returns_no_changes_for_unchanged_file(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_no_changes_for_unchanged_file(self, cache: FileCache, tmp_path: Path) -> None:
         f = tmp_path / "stable.py"
         f.write_text("x = 1\n")
         cache.smart_read(str(f))  # first read
         result = cache.smart_read(str(f))  # second read, unchanged
         assert result.startswith("No changes since last read")
 
-    def it_returns_error_for_missing_file(
-        self, cache: FileCache, tmp_path: Path
-    ) -> None:
+    def it_returns_error_for_missing_file(self, cache: FileCache, tmp_path: Path) -> None:
         missing = tmp_path / "ghost.py"
         result = cache.smart_read(str(missing))
         assert "Error: file not found" in result

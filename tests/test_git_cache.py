@@ -273,9 +273,7 @@ class DescribeGitCache:
         assert "was_staged.txt" in delta
         assert "Unstaged" in delta
 
-    def it_formats_full_snapshot_with_staged_files(
-        self, git_project: Path, tmp_path: Path
-    ) -> None:
+    def it_formats_full_snapshot_with_staged_files(self, git_project: Path, tmp_path: Path) -> None:
         (git_project / "for_stage.txt").write_text("stage\n")
         subprocess.run(
             ["git", "add", "for_stage.txt"], cwd=git_project, capture_output=True, check=True

@@ -5,6 +5,33 @@ from __future__ import annotations
 import sqlite3
 import time
 from pathlib import Path
+from typing import TypedDict, cast
+
+
+class SessionStats(TypedDict):
+    total_cache_hits: int
+    total_tokens_saved: int
+
+
+class ToolBreakdownRow(TypedDict):
+    tool_name: str
+    count: int
+    hits: int
+    tokens_saved: int
+
+
+class AdoptionCategoryRate(TypedDict):
+    oracle: int
+    builtin: int
+    rate: float
+
+
+class SessionComparison(TypedDict):
+    current_hit_rate: float
+    avg_hit_rate: float
+    current_adoption_rate: float
+    avg_adoption_rate: float
+    trend: str
 
 
 class OracleStore:
@@ -168,7 +195,7 @@ class OracleStore:
         )
         self._conn.commit()
 
-    def get_session_stats(self, session_id: str) -> dict[str, int]:
+    def get_session_stats(self, session_id: str) -> SessionStats:
         row = self._conn.execute(
             """
             SELECT
@@ -188,7 +215,7 @@ class OracleStore:
             "total_tokens_saved": row["total_tokens_saved"],
         }
 
-    def get_cumulative_stats(self) -> dict[str, int]:
+    def get_cumulative_stats(self) -> SessionStats:
         row = self._conn.execute(
             """
             SELECT
@@ -215,7 +242,7 @@ class OracleStore:
         row = self._conn.execute("SELECT COUNT(*) AS cnt FROM agent_log").fetchone()
         return row["cnt"] if row is not None else 0
 
-    def get_tool_breakdown(self, session_id: str | None = None) -> list[dict[str, object]]:
+    def get_tool_breakdown(self, session_id: str | None = None) -> list[ToolBreakdownRow]:
         if session_id is not None:
             rows = self._conn.execute(
                 """
@@ -244,9 +271,9 @@ class OracleStore:
                 ORDER BY COUNT(*) DESC
                 """
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [cast(ToolBreakdownRow, dict(row)) for row in rows]
 
-    def get_adoption_rates(self, session_id: str | None = None) -> dict[str, dict[str, object]]:
+    def get_adoption_rates(self, session_id: str | None = None) -> dict[str, AdoptionCategoryRate]:
         breakdown = self.get_tool_breakdown(session_id)
         if not breakdown:
             return {}
@@ -277,19 +304,19 @@ class OracleStore:
             else:
                 categories[category]["builtin"] += count
 
-        result: dict[str, dict[str, object]] = {}
+        result: dict[str, AdoptionCategoryRate] = {}
         for category, counts in categories.items():
             total = counts["oracle"] + counts["builtin"]
             rate = counts["oracle"] / total if total > 0 else 0.0
-            result[category] = {
-                "oracle": counts["oracle"],
-                "builtin": counts["builtin"],
-                "rate": rate,
-            }
+            result[category] = AdoptionCategoryRate(
+                oracle=counts["oracle"],
+                builtin=counts["builtin"],
+                rate=rate,
+            )
 
         return result
 
-    def get_session_comparison(self, session_id: str) -> dict[str, object]:
+    def get_session_comparison(self, session_id: str) -> SessionComparison:
         # Get all distinct session IDs except current, ordered by max timestamp
         other_sessions = self._conn.execute(
             """
@@ -334,13 +361,13 @@ class OracleStore:
         )
 
         if not other_sessions:
-            return {
-                "current_hit_rate": current_hit_rate,
-                "avg_hit_rate": 0.0,
-                "current_adoption_rate": current_adoption_rate,
-                "avg_adoption_rate": 0.0,
-                "trend": "stable",
-            }
+            return SessionComparison(
+                current_hit_rate=current_hit_rate,
+                avg_hit_rate=0.0,
+                current_adoption_rate=current_adoption_rate,
+                avg_adoption_rate=0.0,
+                trend="stable",
+            )
 
         # Average metrics across recent sessions
         session_ids = [row["session_id"] for row in other_sessions]
@@ -399,13 +426,13 @@ class OracleStore:
         else:
             trend = "stable"
 
-        return {
-            "current_hit_rate": current_hit_rate,
-            "avg_hit_rate": avg_hit_rate,
-            "current_adoption_rate": current_adoption_rate,
-            "avg_adoption_rate": avg_adoption_rate,
-            "trend": trend,
-        }
+        return SessionComparison(
+            current_hit_rate=current_hit_rate,
+            avg_hit_rate=avg_hit_rate,
+            current_adoption_rate=current_adoption_rate,
+            avg_adoption_rate=avg_adoption_rate,
+            trend=trend,
+        )
 
     def evict_stale_files(self, max_age_days: int = 30, now: int | None = None) -> int:
         if now is None:

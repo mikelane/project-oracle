@@ -106,9 +106,7 @@ class Telemetry:
             observations: list[Observation] = []
             for category, data in rates.items():
                 rate = float(str(data.get("rate", 0.0)))
-                observations.append(
-                    Observation(value=rate, attributes={"category": category})
-                )
+                observations.append(Observation(value=rate, attributes={"category": category}))
             return observations
         finally:
             store.close()

@@ -11,6 +11,7 @@ class OracleStore:
     """SQLite-backed storage for file cache, git state, command results, and agent logs."""
 
     def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path))
         self._conn.row_factory = sqlite3.Row

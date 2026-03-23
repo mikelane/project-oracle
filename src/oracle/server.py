@@ -11,6 +11,7 @@ from mcp.server.fastmcp import FastMCP
 
 from oracle.project import ProjectState
 from oracle.registry import ProjectRegistry
+from oracle.telemetry import Telemetry, create_telemetry
 
 mcp = FastMCP(
     "project-oracle",
@@ -24,6 +25,16 @@ mcp = FastMCP(
 
 _oracle_dir = Path(os.environ.get("ORACLE_DIR", str(Path.home() / ".project-oracle")))
 _registry = ProjectRegistry(_oracle_dir)
+_telemetry: Telemetry | None = None
+
+
+def _get_telemetry() -> Telemetry:
+    global _telemetry  # noqa: PLW0603
+    if _telemetry is None:
+        project = _registry.current()
+        store = project.store if project is not None else None
+        _telemetry = create_telemetry(store=store)
+    return _telemetry
 
 
 def _ensure_caches(project: ProjectState) -> None:
@@ -63,6 +74,14 @@ def _log(
         return
     project.store.log_interaction(
         project.session_id, tool_name, input_data, cache_hit, tokens_saved, int(time.time())
+    )
+    # Emit OTel metrics (non-blocking, fire-and-forget)
+    telemetry = _get_telemetry()
+    telemetry.record_tool_call(
+        tool_name=tool_name,
+        session_id=project.session_id,
+        cache_hit=cache_hit,
+        tokens_saved=tokens_saved,
     )
 
 

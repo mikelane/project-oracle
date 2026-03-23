@@ -154,6 +154,8 @@ class DescribeIngestPipeline:
         self._enqueue(
             oracle_dir,
             {
+                "session_id": "integration-test",
+                "cwd": str(project_dir),
                 "tool_name": "Read",
                 "tool_input": {"file_path": file_path},
             },
@@ -166,8 +168,8 @@ class DescribeIngestPipeline:
         project.file_cache = FileCache(project.store)
 
         # Process the ingest queue — this should cache the file
-        count = process_ingest(registry, oracle_dir, self._ensure_caches)
-        assert count == 1
+        result = process_ingest(registry, oracle_dir, self._ensure_caches)
+        assert result.cache_populated == 1
 
         # Now a direct smart_read_with_stats should be a cache hit
         response, tokens_saved = project.file_cache.smart_read_with_stats(file_path)
@@ -201,8 +203,8 @@ class DescribeIngestPipeline:
         project.file_cache = FileCache(project.store)
 
         # Process ingest — Grep entries are ignored
-        count = process_ingest(registry, oracle_dir, self._ensure_caches)
-        assert count == 0
+        result = process_ingest(registry, oracle_dir, self._ensure_caches)
+        assert result.cache_populated == 0
 
         # smart_read_with_stats on the file is a cache miss (ingest didn't cache it)
         response, tokens_saved = project.file_cache.smart_read_with_stats(file_path)

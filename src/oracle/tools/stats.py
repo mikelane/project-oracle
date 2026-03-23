@@ -23,9 +23,7 @@ def _format_hit_rate_section(session_id: str, store: OracleStore) -> str:
 def _count_oracle_calls(session_id: str, store: OracleStore) -> int:
     breakdown = store.get_tool_breakdown(session_id=session_id)
     return sum(
-        int(str(row["count"]))
-        for row in breakdown
-        if str(row["tool_name"]).startswith("oracle_")
+        int(str(row["count"])) for row in breakdown if str(row["tool_name"]).startswith("oracle_")
     )
 
 
@@ -81,14 +79,10 @@ def _format_cumulative_section(store: OracleStore) -> str:
     breakdown = store.get_tool_breakdown()
 
     oracle_calls = sum(
-        int(str(row["count"]))
-        for row in breakdown
-        if str(row["tool_name"]).startswith("oracle_")
+        int(str(row["count"])) for row in breakdown if str(row["tool_name"]).startswith("oracle_")
     )
     builtin_calls = sum(
-        int(str(row["count"]))
-        for row in breakdown
-        if str(row["tool_name"]).startswith("builtin_")
+        int(str(row["count"])) for row in breakdown if str(row["tool_name"]).startswith("builtin_")
     )
 
     total = oracle_calls + builtin_calls

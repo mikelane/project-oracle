@@ -22,7 +22,7 @@ def store(tmp_path: Path) -> Generator[OracleStore, None, None]:
 class DescribeOracleStats:
     """Tests for the handle_oracle_stats tool handler."""
 
-    def it_returns_session_stats(self, store: OracleStore) -> None:
+    def it_shows_cache_hit_rate_as_percentage(self, store: OracleStore) -> None:
         from oracle.tools.stats import handle_oracle_stats
 
         session_id = "sess-abc123"
@@ -31,43 +31,96 @@ class DescribeOracleStats:
         store.log_interaction(session_id, "oracle_grep", "pattern", False, 0, 3000)
 
         result = handle_oracle_stats(session_id, store)
-        assert "Session (sess-abc123):" in result
-        assert "Tool calls: 3" in result
-        assert "Cache hits: 2" in result
-        assert "Tokens saved: 800" in result
 
-    def it_returns_cumulative_stats(self, store: OracleStore) -> None:
+        assert "Hit rate:" in result
+        assert "67%" in result
+        assert "(2/3 oracle calls)" in result
+        assert "800" in result
+
+    def it_shows_per_tool_adoption_rates(self, store: OracleStore) -> None:
+        from oracle.tools.stats import handle_oracle_stats
+
+        session_id = "sess-adopt"
+        store.log_interaction(session_id, "oracle_read", "/a.py", True, 500, 1000)
+        store.log_interaction(session_id, "builtin_read", None, False, 0, 2000)
+        store.log_interaction(session_id, "builtin_read", None, False, 0, 3000)
+        store.log_interaction(session_id, "builtin_read", None, False, 0, 4000)
+
+        result = handle_oracle_stats(session_id, store)
+
+        assert "Adoption" in result
+        assert "read:" in result
+        assert "25% oracle" in result
+        assert "1 oracle / 3 built-in" in result
+
+    def it_flags_unused_tools(self, store: OracleStore) -> None:
+        from oracle.tools.stats import handle_oracle_stats
+
+        session_id = "sess-unused"
+        store.log_interaction(session_id, "builtin_grep", None, False, 0, 1000)
+        store.log_interaction(session_id, "builtin_grep", None, False, 0, 2000)
+
+        result = handle_oracle_stats(session_id, store)
+
+        assert "grep:" in result
+        assert "0% oracle" in result
+        assert "<-- never used" in result
+
+    def it_shows_trend_vs_recent_sessions(self, store: OracleStore) -> None:
+        from oracle.tools.stats import handle_oracle_stats
+
+        # Prior sessions
+        for i in range(1, 4):
+            store.log_interaction(f"old-{i}", "oracle_read", "/a.py", True, 100, i * 1000)
+            store.log_interaction(f"old-{i}", "oracle_read", "/b.py", False, 0, i * 1000 + 1)
+            store.log_interaction(f"old-{i}", "builtin_read", None, False, 0, i * 1000 + 2)
+
+        # Current session: better
+        store.log_interaction("current", "oracle_read", "/a.py", True, 500, 100_000)
+        store.log_interaction("current", "oracle_read", "/b.py", True, 300, 100_001)
+
+        result = handle_oracle_stats("current", store)
+
+        assert "Trend" in result
+        assert "now vs" in result
+        assert "avg" in result
+
+    def it_shows_cumulative_section(self, store: OracleStore) -> None:
         from oracle.tools.stats import handle_oracle_stats
 
         store.log_interaction("sess-1", "oracle_read", "/a.py", True, 500, 1000)
         store.log_interaction("sess-1", "oracle_read", "/b.py", True, 300, 2000)
         store.log_interaction("sess-2", "oracle_read", "/c.py", True, 200, 3000)
         store.log_interaction("sess-2", "oracle_grep", "pat", False, 0, 4000)
+        store.log_interaction("sess-2", "builtin_read", None, False, 0, 5000)
 
         result = handle_oracle_stats("sess-1", store)
-        assert "All sessions:" in result
-        assert "Tool calls: 4" in result
-        assert "Cache hits: 3" in result
-        assert "Tokens saved: 1,000" in result
+
+        assert "Cumulative" in result
+        assert "Oracle calls:" in result
+        assert "Built-in calls:" in result
+        assert "Overall adoption:" in result
+        assert "Cache hit rate:" in result
+        assert "Tokens saved:" in result
 
     def it_returns_zeros_when_no_logs(self, store: OracleStore) -> None:
         from oracle.tools.stats import handle_oracle_stats
 
         result = handle_oracle_stats("empty-session", store)
-        assert "Tool calls: 0" in result
-        assert "Cache hits: 0" in result
+
+        assert "Hit rate: 0%" in result
+        assert "0 oracle calls" in result
         assert "Tokens saved: 0" in result
 
-    def it_formats_as_readable_text(self, store: OracleStore) -> None:
+    def it_formats_oracle_health_header(self, store: OracleStore) -> None:
         from oracle.tools.stats import handle_oracle_stats
 
         store.log_interaction("sess-x", "oracle_read", "/a.py", True, 4500, 1000)
 
         result = handle_oracle_stats("sess-x", store)
-        assert "Session (" in result
-        assert "Cache hits:" in result
-        assert "Tokens saved:" in result
-        assert "All sessions:" in result
+
+        assert "=== Oracle Health (session sess-x) ===" in result
+        assert "Cache Performance:" in result
         assert "4,500" in result
 
 

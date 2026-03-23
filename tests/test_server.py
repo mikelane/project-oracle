@@ -590,8 +590,10 @@ class DescribeOracleStatsTool:
         oracle_dir = tmp_path / ".oracle"
         oracle_dir.mkdir()
         (oracle_dir / "projects").mkdir()
+        (oracle_dir / "ingest").mkdir()
 
         mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
+        mocker.patch("oracle.server._oracle_dir", oracle_dir)
         result = oracle_stats()
         assert "no active project" in result.lower()
 
@@ -611,8 +613,8 @@ class DescribeOracleStatsTool:
         mocker.patch("oracle.server._registry", ProjectRegistry(oracle_dir))
         oracle_read(str(project_dir / "main.py"))
         result = oracle_stats()
-        assert "session" in result.lower()
-        assert "tool calls:" in result.lower()
+        assert "oracle health" in result.lower()
+        assert "hit rate:" in result.lower()
 
     def it_returns_error_when_store_is_none(self, tmp_path: Path, mocker: MockerFixture) -> None:
         from oracle.registry import ProjectRegistry

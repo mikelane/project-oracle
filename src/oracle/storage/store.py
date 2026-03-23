@@ -214,6 +214,198 @@ class OracleStore:
         row = self._conn.execute("SELECT COUNT(*) AS cnt FROM agent_log").fetchone()
         return row["cnt"] if row is not None else 0
 
+    def get_tool_breakdown(self, session_id: str | None = None) -> list[dict[str, object]]:
+        if session_id is not None:
+            rows = self._conn.execute(
+                """
+                SELECT
+                    tool_name,
+                    COUNT(*) AS count,
+                    SUM(cache_hit) AS hits,
+                    SUM(tokens_saved) AS tokens_saved
+                FROM agent_log
+                WHERE session_id = ?
+                GROUP BY tool_name
+                ORDER BY COUNT(*) DESC
+                """,
+                (session_id,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                """
+                SELECT
+                    tool_name,
+                    COUNT(*) AS count,
+                    SUM(cache_hit) AS hits,
+                    SUM(tokens_saved) AS tokens_saved
+                FROM agent_log
+                GROUP BY tool_name
+                ORDER BY COUNT(*) DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_adoption_rates(self, session_id: str | None = None) -> dict[str, dict[str, object]]:
+        breakdown = self.get_tool_breakdown(session_id)
+        if not breakdown:
+            return {}
+
+        # Map tool names to categories
+        category_map = {
+            "oracle_read": "read",
+            "builtin_read": "read",
+            "oracle_grep": "grep",
+            "builtin_grep": "grep",
+            "oracle_run": "run",
+            "builtin_bash": "run",
+        }
+
+        categories: dict[str, dict[str, int]] = {}
+        for row in breakdown:
+            tool = str(row["tool_name"])
+            category = category_map.get(tool)
+            if category is None:
+                continue
+
+            if category not in categories:
+                categories[category] = {"oracle": 0, "builtin": 0}
+
+            count = int(str(row["count"]))
+            if tool.startswith("oracle_"):
+                categories[category]["oracle"] += count
+            else:
+                categories[category]["builtin"] += count
+
+        result: dict[str, dict[str, object]] = {}
+        for category, counts in categories.items():
+            total = counts["oracle"] + counts["builtin"]
+            rate = counts["oracle"] / total if total > 0 else 0.0
+            result[category] = {
+                "oracle": counts["oracle"],
+                "builtin": counts["builtin"],
+                "rate": rate,
+            }
+
+        return result
+
+    def get_session_comparison(self, session_id: str) -> dict[str, object]:
+        # Get all distinct session IDs except current, ordered by max timestamp
+        other_sessions = self._conn.execute(
+            """
+            SELECT session_id
+            FROM agent_log
+            WHERE session_id != ?
+            GROUP BY session_id
+            ORDER BY MAX(ts) DESC
+            LIMIT 5
+            """,
+            (session_id,),
+        ).fetchall()
+
+        # Current session metrics
+        current_oracle_rows = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total, SUM(cache_hit) AS hits
+            FROM agent_log
+            WHERE session_id = ? AND tool_name LIKE 'oracle_%'
+            """,
+            (session_id,),
+        ).fetchone()
+
+        current_total_rows = self._conn.execute(
+            "SELECT COUNT(*) AS total FROM agent_log WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+
+        current_oracle_total = current_oracle_rows["total"] if current_oracle_rows else 0
+        current_oracle_hits = (
+            current_oracle_rows["hits"]
+            if current_oracle_rows and current_oracle_rows["hits"]
+            else 0
+        )
+        current_all_total = current_total_rows["total"] if current_total_rows else 0
+
+        current_hit_rate = (
+            current_oracle_hits / current_oracle_total if current_oracle_total > 0 else 0.0
+        )
+        current_adoption_rate = (
+            current_oracle_total / current_all_total if current_all_total > 0 else 0.0
+        )
+
+        if not other_sessions:
+            return {
+                "current_hit_rate": current_hit_rate,
+                "avg_hit_rate": 0.0,
+                "current_adoption_rate": current_adoption_rate,
+                "avg_adoption_rate": 0.0,
+                "trend": "stable",
+            }
+
+        # Average metrics across recent sessions
+        session_ids = [row["session_id"] for row in other_sessions]
+        placeholders = ",".join("?" * len(session_ids))
+
+        avg_hit_rows = self._conn.execute(
+            f"""
+            SELECT session_id,
+                   COUNT(*) AS total,
+                   SUM(cache_hit) AS hits
+            FROM agent_log
+            WHERE session_id IN ({placeholders}) AND tool_name LIKE 'oracle_%'
+            GROUP BY session_id
+            """,
+            session_ids,
+        ).fetchall()
+
+        avg_total_rows = self._conn.execute(
+            f"""
+            SELECT session_id, COUNT(*) AS total
+            FROM agent_log
+            WHERE session_id IN ({placeholders})
+            GROUP BY session_id
+            """,
+            session_ids,
+        ).fetchall()
+
+        hit_rates = []
+        for row in avg_hit_rows:
+            total = row["total"]
+            hits = row["hits"] or 0
+            if total > 0:
+                hit_rates.append(hits / total)
+
+        adoption_rates = []
+        oracle_by_session = {row["session_id"]: row["total"] for row in avg_hit_rows}
+        total_by_session = {row["session_id"]: row["total"] for row in avg_total_rows}
+        for sid in session_ids:
+            oracle_count = oracle_by_session.get(sid, 0)
+            total_count = total_by_session.get(sid, 0)
+            if total_count > 0:
+                adoption_rates.append(oracle_count / total_count)
+
+        avg_hit_rate = sum(hit_rates) / len(hit_rates) if hit_rates else 0.0
+        avg_adoption_rate = sum(adoption_rates) / len(adoption_rates) if adoption_rates else 0.0
+
+        # Determine trend based on combined difference
+        hit_diff = current_hit_rate - avg_hit_rate
+        adoption_diff = current_adoption_rate - avg_adoption_rate
+        combined_diff = hit_diff + adoption_diff
+
+        if combined_diff > 0.05:
+            trend = "improving"
+        elif combined_diff < -0.05:
+            trend = "declining"
+        else:
+            trend = "stable"
+
+        return {
+            "current_hit_rate": current_hit_rate,
+            "avg_hit_rate": avg_hit_rate,
+            "current_adoption_rate": current_adoption_rate,
+            "avg_adoption_rate": avg_adoption_rate,
+            "trend": trend,
+        }
+
     def evict_stale_files(self, max_age_days: int = 30, now: int | None = None) -> int:
         if now is None:
             now = int(time.time())

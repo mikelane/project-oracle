@@ -85,8 +85,8 @@ class DescribeIngestBridgeToolInputNotDict:
         registry = ProjectRegistry(oracle_dir)
 
         # BUG: This will raise AttributeError: 'str' object has no attribute 'get'
-        count = process_ingest(registry, oracle_dir, lambda p: None)
-        assert count == 0
+        result = process_ingest(registry, oracle_dir, lambda p: None)
+        assert result.cache_populated == 0
 
 
 @pytest.mark.medium

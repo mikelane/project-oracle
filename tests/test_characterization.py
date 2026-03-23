@@ -66,18 +66,12 @@ class DescribeOracleStatsCharacterization:
 
         result = handle_oracle_stats(session_id, store)
 
-        expected = (
-            "Session (sess-abc-123):\n"
-            "  Tool calls: 3\n"
-            "  Cache hits: 2\n"
-            "  Tokens saved: 800\n"
-            "\n"
-            "All sessions:\n"
-            "  Tool calls: 4\n"
-            "  Cache hits: 3\n"
-            "  Tokens saved: 2,000"
-        )
-        assert result == expected
+        assert "=== Oracle Health (session sess-abc-123) ===" in result
+        assert "Hit rate: 67% (2/3 oracle calls)" in result
+        assert "Tokens saved: 800 this session" in result
+        assert "=== Cumulative ===" in result
+        assert "Oracle calls: 4" in result
+        assert "Tokens saved: 2,000" in result
         store.close()
 
     def it_produces_stable_stats_format_with_no_activity(self, tmp_path: Path) -> None:
@@ -85,18 +79,10 @@ class DescribeOracleStatsCharacterization:
 
         result = handle_oracle_stats("unused-session", store)
 
-        expected = (
-            "Session (unused-session):\n"
-            "  Tool calls: 0\n"
-            "  Cache hits: 0\n"
-            "  Tokens saved: 0\n"
-            "\n"
-            "All sessions:\n"
-            "  Tool calls: 0\n"
-            "  Cache hits: 0\n"
-            "  Tokens saved: 0"
-        )
-        assert result == expected
+        assert "=== Oracle Health (session unused-session) ===" in result
+        assert "Hit rate: 0% (0/0 oracle calls)" in result
+        assert "Tokens saved: 0 this session" in result
+        assert "=== Cumulative ===" in result
         store.close()
 
     def it_formats_large_token_counts_with_commas(self, tmp_path: Path) -> None:
@@ -108,13 +94,8 @@ class DescribeOracleStatsCharacterization:
 
         result = handle_oracle_stats(session_id, store)
 
+        assert "Tokens saved: 1,234,567 this session" in result
         assert "Tokens saved: 1,234,567" in result
-        # Verify both session and cumulative sections have the comma-formatted value
-        lines = result.splitlines()
-        # Line 3: session tokens saved; line 8: cumulative tokens saved
-        # (blank line at index 4 separates the two sections)
-        assert lines[3] == "  Tokens saved: 1,234,567"
-        assert lines[8] == "  Tokens saved: 1,234,567"
         store.close()
 
 

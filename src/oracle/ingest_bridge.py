@@ -79,10 +79,6 @@ def process_ingest(
 
         # For Read entries, also populate the file cache
         if tool_name == "Read":
-            file_path = tool_input.get("file_path")
-            if file_path is None:
-                continue
-            resolved = Path(file_path).resolve()
             if not resolved.is_file():
                 continue
 

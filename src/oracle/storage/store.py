@@ -290,7 +290,7 @@ class OracleStore:
 
         categories: dict[str, dict[str, int]] = {}
         for row in breakdown:
-            tool = str(row["tool_name"])
+            tool = row["tool_name"]
             category = category_map.get(tool)
             if category is None:
                 continue
@@ -298,7 +298,7 @@ class OracleStore:
             if category not in categories:
                 categories[category] = {"oracle": 0, "builtin": 0}
 
-            count = int(str(row["count"]))
+            count = row["count"]
             if tool.startswith("oracle_"):
                 categories[category]["oracle"] += count
             else:

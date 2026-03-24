@@ -105,8 +105,9 @@ class Telemetry:
 
             observations: list[Observation] = []
             for category, data in rates.items():
-                rate = float(str(data.get("rate", 0.0)))
-                observations.append(Observation(value=rate, attributes={"category": category}))
+                observations.append(
+                    Observation(value=data["rate"], attributes={"category": category})
+                )
             return observations
         finally:
             store.close()
@@ -118,7 +119,7 @@ class Telemetry:
 
         try:
             cumulative = store.get_cumulative_stats()
-            total_hits = cumulative.get("total_cache_hits", 0)
+            total_hits = cumulative["total_cache_hits"]
             total_calls = store.get_cumulative_call_count()
 
             if total_calls == 0:

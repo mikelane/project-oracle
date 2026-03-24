@@ -8,8 +8,8 @@ from oracle.storage.store import OracleStore
 def _format_hit_rate_section(session_id: str, store: OracleStore) -> str:
     session_stats = store.get_session_stats(session_id)
     oracle_calls = _count_oracle_calls(session_id, store)
-    hits = int(session_stats["total_cache_hits"])
-    tokens_saved = int(session_stats["total_tokens_saved"])
+    hits = session_stats["total_cache_hits"]
+    tokens_saved = session_stats["total_tokens_saved"]
 
     hit_pct = round(hits / oracle_calls * 100) if oracle_calls > 0 else 0
 
@@ -22,9 +22,7 @@ def _format_hit_rate_section(session_id: str, store: OracleStore) -> str:
 
 def _count_oracle_calls(session_id: str, store: OracleStore) -> int:
     breakdown = store.get_tool_breakdown(session_id=session_id)
-    return sum(
-        int(str(row["count"])) for row in breakdown if str(row["tool_name"]).startswith("oracle_")
-    )
+    return sum(row["count"] for row in breakdown if row["tool_name"].startswith("oracle_"))
 
 
 def _format_adoption_section(session_id: str, store: OracleStore) -> str:
@@ -37,8 +35,8 @@ def _format_adoption_section(session_id: str, store: OracleStore) -> str:
         if category not in rates:
             continue
         data = rates[category]
-        oracle_count = int(str(data["oracle"]))
-        builtin_count = int(str(data["builtin"]))
+        oracle_count = data["oracle"]
+        builtin_count = data["builtin"]
         total = oracle_count + builtin_count
         pct = round(oracle_count / total * 100) if total > 0 else 0
         suffix = "  <-- never used" if oracle_count == 0 and builtin_count > 0 else ""
@@ -57,13 +55,13 @@ def _format_trend_section(session_id: str, store: OracleStore) -> str:
     if comparison["trend"] == "stable" and comparison["avg_hit_rate"] == 0.0:
         return ""
 
-    current_hit = round(float(str(comparison["current_hit_rate"])) * 100)
-    avg_hit = round(float(str(comparison["avg_hit_rate"])) * 100)
+    current_hit = round(comparison["current_hit_rate"] * 100)
+    avg_hit = round(comparison["avg_hit_rate"] * 100)
     hit_diff = current_hit - avg_hit
     hit_sign = "+" if hit_diff >= 0 else ""
 
-    current_adopt = round(float(str(comparison["current_adoption_rate"])) * 100)
-    avg_adopt = round(float(str(comparison["avg_adoption_rate"])) * 100)
+    current_adopt = round(comparison["current_adoption_rate"] * 100)
+    avg_adopt = round(comparison["avg_adoption_rate"] * 100)
     adopt_diff = current_adopt - avg_adopt
     adopt_sign = "+" if adopt_diff >= 0 else ""
 
@@ -78,18 +76,16 @@ def _format_cumulative_section(store: OracleStore) -> str:
     cumulative_stats = store.get_cumulative_stats()
     breakdown = store.get_tool_breakdown()
 
-    oracle_calls = sum(
-        int(str(row["count"])) for row in breakdown if str(row["tool_name"]).startswith("oracle_")
-    )
+    oracle_calls = sum(row["count"] for row in breakdown if row["tool_name"].startswith("oracle_"))
     builtin_calls = sum(
-        int(str(row["count"])) for row in breakdown if str(row["tool_name"]).startswith("builtin_")
+        row["count"] for row in breakdown if row["tool_name"].startswith("builtin_")
     )
 
     total = oracle_calls + builtin_calls
     adoption_pct = round(oracle_calls / total * 100) if total > 0 else 0
-    total_hits = int(cumulative_stats["total_cache_hits"])
+    total_hits = cumulative_stats["total_cache_hits"]
     hit_rate_pct = round(total_hits / oracle_calls * 100) if oracle_calls > 0 else 0
-    total_tokens = int(cumulative_stats["total_tokens_saved"])
+    total_tokens = cumulative_stats["total_tokens_saved"]
 
     return (
         f"=== Cumulative ===\n"

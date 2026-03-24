@@ -146,15 +146,18 @@ def create_telemetry(
 ) -> Telemetry:
     """Factory that wires up an OTLP HTTP exporter and returns a Telemetry instance.
 
-    Reads OTEL_EXPORTER_OTLP_ENDPOINT from environment if endpoint is not provided.
-    Defaults to http://localhost:4318 (standard OTLP HTTP port).
+    Reads OTEL_EXPORTER_OTLP_METRICS_ENDPOINT from environment if endpoint is not provided.
+    Defaults to http://localhost:4318/v1/metrics (full OTLP HTTP metrics path).
+
+    Note: OTLPMetricExporter appends /v1/metrics to bare base URLs, causing
+    double-path 404s. We pass the full path to avoid this.
     """
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
     resolved_endpoint = endpoint or os.environ.get(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"
+        "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://localhost:4318/v1/metrics"
     )
 
     exporter = OTLPMetricExporter(endpoint=resolved_endpoint)

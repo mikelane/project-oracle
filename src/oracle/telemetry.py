@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
     from opentelemetry.sdk.metrics import MeterProvider
 
     from oracle.storage.store import OracleStore
+
+logger = logging.getLogger(__name__)
 
 _METER_NAME = "project-oracle"
 
@@ -109,6 +112,9 @@ class Telemetry:
                     Observation(value=data["rate"], attributes={"category": category})
                 )
             return observations
+        except Exception:
+            logger.exception("Failed to observe adoption rate")
+            return []
         finally:
             store.close()
 
@@ -127,6 +133,9 @@ class Telemetry:
 
             rate = total_hits / total_calls
             return [Observation(value=rate)]
+        except Exception:
+            logger.exception("Failed to observe cache hit rate")
+            return []
         finally:
             store.close()
 

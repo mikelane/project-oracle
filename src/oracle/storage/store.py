@@ -34,6 +34,24 @@ class SessionComparison(TypedDict):
     trend: str
 
 
+_TREND_THRESHOLD: float = 0.05
+
+
+def _in_clause(n: int) -> str:
+    return ",".join("?" * n)
+
+
+def _determine_trend(
+    current_hit: float, avg_hit: float, current_adopt: float, avg_adopt: float
+) -> str:
+    combined_diff = (current_hit - avg_hit) + (current_adopt - avg_adopt)
+    if combined_diff > _TREND_THRESHOLD:
+        return "improving"
+    if combined_diff < -_TREND_THRESHOLD:
+        return "declining"
+    return "stable"
+
+
 class OracleStore:
     """SQLite-backed storage for file cache, git state, command results, and agent logs."""
 
@@ -317,7 +335,8 @@ class OracleStore:
         return result
 
     def get_session_comparison(self, session_id: str) -> SessionComparison:
-        # Get all distinct session IDs except current, ordered by max timestamp
+        current_hit_rate, current_adoption_rate = self._current_session_rates(session_id)
+
         other_sessions = self._conn.execute(
             """
             SELECT session_id
@@ -330,36 +349,6 @@ class OracleStore:
             (session_id,),
         ).fetchall()
 
-        # Current session metrics
-        current_oracle_rows = self._conn.execute(
-            """
-            SELECT COUNT(*) AS total, SUM(cache_hit) AS hits
-            FROM agent_log
-            WHERE session_id = ? AND tool_name LIKE 'oracle_%'
-            """,
-            (session_id,),
-        ).fetchone()
-
-        current_total_rows = self._conn.execute(
-            "SELECT COUNT(*) AS total FROM agent_log WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()
-
-        current_oracle_total = current_oracle_rows["total"] if current_oracle_rows else 0
-        current_oracle_hits = (
-            current_oracle_rows["hits"]
-            if current_oracle_rows and current_oracle_rows["hits"]
-            else 0
-        )
-        current_all_total = current_total_rows["total"] if current_total_rows else 0
-
-        current_hit_rate = (
-            current_oracle_hits / current_oracle_total if current_oracle_total > 0 else 0.0
-        )
-        current_adoption_rate = (
-            current_oracle_total / current_all_total if current_all_total > 0 else 0.0
-        )
-
         if not other_sessions:
             return SessionComparison(
                 current_hit_rate=current_hit_rate,
@@ -369,11 +358,47 @@ class OracleStore:
                 trend="stable",
             )
 
-        # Average metrics across recent sessions
         session_ids = [row["session_id"] for row in other_sessions]
-        placeholders = ",".join("?" * len(session_ids))
+        avg_hit_rate, avg_adoption_rate = self._recent_session_averages(session_ids)
+        trend = _determine_trend(
+            current_hit_rate, avg_hit_rate, current_adoption_rate, avg_adoption_rate
+        )
 
-        avg_hit_rows = self._conn.execute(
+        return SessionComparison(
+            current_hit_rate=current_hit_rate,
+            avg_hit_rate=avg_hit_rate,
+            current_adoption_rate=current_adoption_rate,
+            avg_adoption_rate=avg_adoption_rate,
+            trend=trend,
+        )
+
+    def _current_session_rates(self, session_id: str) -> tuple[float, float]:
+        oracle_row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS total, SUM(cache_hit) AS hits
+            FROM agent_log
+            WHERE session_id = ? AND tool_name LIKE 'oracle_%'
+            """,
+            (session_id,),
+        ).fetchone()
+
+        total_row = self._conn.execute(
+            "SELECT COUNT(*) AS total FROM agent_log WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+
+        oracle_total = oracle_row["total"] if oracle_row else 0
+        oracle_hits = oracle_row["hits"] if oracle_row and oracle_row["hits"] else 0
+        all_total = total_row["total"] if total_row else 0
+
+        hit_rate = oracle_hits / oracle_total if oracle_total > 0 else 0.0
+        adoption_rate = oracle_total / all_total if all_total > 0 else 0.0
+        return hit_rate, adoption_rate
+
+    def _recent_session_averages(self, session_ids: list[str]) -> tuple[float, float]:
+        placeholders = _in_clause(len(session_ids))
+
+        oracle_rows = self._conn.execute(
             f"""
             SELECT session_id,
                    COUNT(*) AS total,
@@ -385,7 +410,7 @@ class OracleStore:
             session_ids,
         ).fetchall()
 
-        avg_total_rows = self._conn.execute(
+        total_rows = self._conn.execute(
             f"""
             SELECT session_id, COUNT(*) AS total
             FROM agent_log
@@ -396,43 +421,24 @@ class OracleStore:
         ).fetchall()
 
         hit_rates = []
-        for row in avg_hit_rows:
+        for row in oracle_rows:
             total = row["total"]
             hits = row["hits"] or 0
             if total > 0:
                 hit_rates.append(hits / total)
 
         adoption_rates = []
-        oracle_by_session = {row["session_id"]: row["total"] for row in avg_hit_rows}
-        total_by_session = {row["session_id"]: row["total"] for row in avg_total_rows}
+        oracle_by_session = {row["session_id"]: row["total"] for row in oracle_rows}
+        total_by_session = {row["session_id"]: row["total"] for row in total_rows}
         for sid in session_ids:
             oracle_count = oracle_by_session.get(sid, 0)
             total_count = total_by_session.get(sid, 0)
             if total_count > 0:
                 adoption_rates.append(oracle_count / total_count)
 
-        avg_hit_rate = sum(hit_rates) / len(hit_rates) if hit_rates else 0.0
-        avg_adoption_rate = sum(adoption_rates) / len(adoption_rates) if adoption_rates else 0.0
-
-        # Determine trend based on combined difference
-        hit_diff = current_hit_rate - avg_hit_rate
-        adoption_diff = current_adoption_rate - avg_adoption_rate
-        combined_diff = hit_diff + adoption_diff
-
-        if combined_diff > 0.05:
-            trend = "improving"
-        elif combined_diff < -0.05:
-            trend = "declining"
-        else:
-            trend = "stable"
-
-        return SessionComparison(
-            current_hit_rate=current_hit_rate,
-            avg_hit_rate=avg_hit_rate,
-            current_adoption_rate=current_adoption_rate,
-            avg_adoption_rate=avg_adoption_rate,
-            trend=trend,
-        )
+        avg_hit = sum(hit_rates) / len(hit_rates) if hit_rates else 0.0
+        avg_adoption = sum(adoption_rates) / len(adoption_rates) if adoption_rates else 0.0
+        return avg_hit, avg_adoption
 
     def evict_stale_files(self, max_age_days: int = 30, now: int | None = None) -> int:
         if now is None:

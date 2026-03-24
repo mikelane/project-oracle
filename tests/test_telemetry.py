@@ -10,6 +10,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from oracle.storage.store import OracleStore
+from oracle.telemetry import Telemetry, create_telemetry
 
 
 @pytest.fixture
@@ -57,18 +58,14 @@ class DescribeTelemetrySetup:
     def it_creates_a_telemetry_instance_with_meter_provider(
         self, meter_provider: MeterProvider
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
 
-        assert telemetry is not None
+        assert telemetry._tool_calls is not None
 
     def it_creates_a_telemetry_instance_without_meter_provider(self) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=None)
 
-        assert telemetry is not None
+        assert telemetry._tool_calls is None
 
 
 @pytest.mark.medium
@@ -76,8 +73,6 @@ class DescribeRecordToolCall:
     def it_increments_tool_calls_counter(
         self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=False, tokens_saved=0
@@ -86,14 +81,11 @@ class DescribeRecordToolCall:
         points = _get_metric_value(metric_reader, "oracle.tool_calls")
         assert len(points) == 1
         assert points[0]["value"] == 1
-        assert points[0]["attributes"]["tool_name"] == "oracle_read"
-        assert points[0]["attributes"]["session_id"] == "sess-1"
+        assert points[0]["attributes"] == {"tool_name": "oracle_read", "session_id": "sess-1"}
 
     def it_increments_cache_hits_counter_on_hit(
         self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=True, tokens_saved=500
@@ -102,13 +94,11 @@ class DescribeRecordToolCall:
         points = _get_metric_value(metric_reader, "oracle.cache_hits")
         assert len(points) == 1
         assert points[0]["value"] == 1
-        assert points[0]["attributes"]["tool_name"] == "oracle_read"
+        assert points[0]["attributes"] == {"tool_name": "oracle_read"}
 
     def it_does_not_increment_cache_hits_on_miss(
         self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=False, tokens_saved=0
@@ -120,8 +110,6 @@ class DescribeRecordToolCall:
     def it_increments_tokens_saved_counter(
         self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=True, tokens_saved=500
@@ -130,13 +118,11 @@ class DescribeRecordToolCall:
         points = _get_metric_value(metric_reader, "oracle.tokens_saved")
         assert len(points) == 1
         assert points[0]["value"] == 500
-        assert points[0]["attributes"]["tool_name"] == "oracle_read"
+        assert points[0]["attributes"] == {"tool_name": "oracle_read"}
 
     def it_does_not_increment_tokens_saved_when_zero(
         self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=False, tokens_saved=0
@@ -148,8 +134,6 @@ class DescribeRecordToolCall:
     def it_accumulates_multiple_tool_calls(
         self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         telemetry = Telemetry(meter_provider=meter_provider)
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=True, tokens_saved=100
@@ -166,15 +150,43 @@ class DescribeRecordToolCall:
         assert len(token_points) == 1
         assert token_points[0]["value"] == 300
 
-    def it_handles_no_meter_provider_gracefully(self) -> None:
-        from oracle.telemetry import Telemetry
-
+    def it_handles_no_meter_provider_gracefully(self, metric_reader: InMemoryMetricReader) -> None:
+        no_op_provider = MeterProvider(metric_readers=[metric_reader])
         telemetry = Telemetry(meter_provider=None)
 
-        # No exception raised
         telemetry.record_tool_call(
             tool_name="oracle_read", session_id="sess-1", cache_hit=True, tokens_saved=500
         )
+
+        _ = Telemetry(meter_provider=no_op_provider)  # Kept alive: triggers metric collection
+        points = _get_metric_value(metric_reader, "oracle.tool_calls")
+        assert len(points) == 0
+
+    def it_increments_cache_hits_but_not_tokens_when_hit_with_zero_saved(
+        self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
+    ) -> None:
+        telemetry = Telemetry(meter_provider=meter_provider)
+        telemetry.record_tool_call(
+            tool_name="oracle_read", session_id="sess-1", cache_hit=True, tokens_saved=0
+        )
+
+        cache_points = _get_metric_value(metric_reader, "oracle.cache_hits")
+        assert len(cache_points) == 1
+        assert cache_points[0]["value"] == 1
+
+        token_points = _get_metric_value(metric_reader, "oracle.tokens_saved")
+        assert len(token_points) == 0
+
+    def it_does_not_increment_tokens_saved_for_negative_values(
+        self, meter_provider: MeterProvider, metric_reader: InMemoryMetricReader
+    ) -> None:
+        telemetry = Telemetry(meter_provider=meter_provider)
+        telemetry.record_tool_call(
+            tool_name="oracle_read", session_id="sess-1", cache_hit=False, tokens_saved=-100
+        )
+
+        token_points = _get_metric_value(metric_reader, "oracle.tokens_saved")
+        assert len(token_points) == 0
 
 
 @pytest.mark.medium
@@ -185,13 +197,11 @@ class DescribeObservableGauges:
         metric_reader: InMemoryMetricReader,
         store: OracleStore,
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         store.log_interaction("sess-1", "oracle_read", "/a.py", True, 500, 1000)
         store.log_interaction("sess-1", "builtin_read", None, False, 0, 2000)
         store.log_interaction("sess-1", "builtin_read", None, False, 0, 3000)
 
-        _telemetry = Telemetry(meter_provider=meter_provider, store=store)  # noqa: F841
+        _ = Telemetry(meter_provider=meter_provider, store=store)  # prevent GC
         points = _get_metric_value(metric_reader, "oracle.adoption_rate")
 
         by_category = {str(p["attributes"].get("category", "")): p["value"] for p in points}
@@ -203,13 +213,11 @@ class DescribeObservableGauges:
         metric_reader: InMemoryMetricReader,
         store: OracleStore,
     ) -> None:
-        from oracle.telemetry import Telemetry
-
         store.log_interaction("sess-1", "oracle_read", "/a.py", True, 500, 1000)
         store.log_interaction("sess-1", "oracle_read", "/b.py", False, 0, 2000)
         store.log_interaction("sess-1", "oracle_grep", "pat", True, 200, 3000)
 
-        _telemetry = Telemetry(meter_provider=meter_provider, store=store)  # noqa: F841
+        _ = Telemetry(meter_provider=meter_provider, store=store)  # prevent GC
         points = _get_metric_value(metric_reader, "oracle.cache_hit_rate")
 
         assert len(points) == 1
@@ -221,9 +229,8 @@ class DescribeObservableGauges:
         metric_reader: InMemoryMetricReader,
         store: OracleStore,
     ) -> None:
-        from oracle.telemetry import Telemetry
-
-        _telemetry = Telemetry(meter_provider=meter_provider, store=store)  # noqa: F841
+        # Empty store returns no categories, so no observations (unlike hit_rate which reports 0.0)
+        _ = Telemetry(meter_provider=meter_provider, store=store)  # prevent GC
         points = _get_metric_value(metric_reader, "oracle.adoption_rate")
 
         assert len(points) == 0
@@ -234,9 +241,7 @@ class DescribeObservableGauges:
         metric_reader: InMemoryMetricReader,
         store: OracleStore,
     ) -> None:
-        from oracle.telemetry import Telemetry
-
-        _telemetry = Telemetry(meter_provider=meter_provider, store=store)  # noqa: F841
+        _ = Telemetry(meter_provider=meter_provider, store=store)  # prevent GC
         points = _get_metric_value(metric_reader, "oracle.cache_hit_rate")
 
         assert len(points) == 1
@@ -247,9 +252,7 @@ class DescribeObservableGauges:
         meter_provider: MeterProvider,
         metric_reader: InMemoryMetricReader,
     ) -> None:
-        from oracle.telemetry import Telemetry
-
-        _telemetry = Telemetry(meter_provider=meter_provider, store=None)  # noqa: F841
+        _ = Telemetry(meter_provider=meter_provider, store=None)  # prevent GC
         adoption_points = _get_metric_value(metric_reader, "oracle.adoption_rate")
         hit_rate_points = _get_metric_value(metric_reader, "oracle.cache_hit_rate")
 
@@ -260,22 +263,23 @@ class DescribeObservableGauges:
 @pytest.mark.medium
 class DescribeCreateTelemetry:
     def it_creates_telemetry_with_default_otlp_endpoint(self) -> None:
-        from oracle.telemetry import create_telemetry
+        telemetry = create_telemetry(store=None)
+
+        assert isinstance(telemetry, Telemetry)
+
+    def it_creates_telemetry_with_custom_endpoint(self) -> None:
+        telemetry = create_telemetry(endpoint="http://localhost:9999", store=None)
+
+        assert isinstance(telemetry, Telemetry)
+
+    def it_creates_telemetry_with_store(self, store: OracleStore) -> None:
+        telemetry = create_telemetry(store=store)
+
+        assert isinstance(telemetry, Telemetry)
+
+    def it_creates_telemetry_using_env_var_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:9999")
 
         telemetry = create_telemetry(store=None)
 
-        assert telemetry is not None
-
-    def it_creates_telemetry_with_custom_endpoint(self) -> None:
-        from oracle.telemetry import create_telemetry
-
-        telemetry = create_telemetry(endpoint="http://localhost:9999", store=None)
-
-        assert telemetry is not None
-
-    def it_creates_telemetry_with_store(self, store: OracleStore) -> None:
-        from oracle.telemetry import create_telemetry
-
-        telemetry = create_telemetry(store=store)
-
-        assert telemetry is not None
+        assert isinstance(telemetry, Telemetry)

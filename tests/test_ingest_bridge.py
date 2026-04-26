@@ -526,3 +526,43 @@ class DescribeIngestSessionFilesWrite:
             ("sess-ingest",),
         ).fetchone()
         assert rows["c"] == 0
+
+    def it_does_not_write_session_files_for_nonexistent_file(
+        self, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        # The hook's binary block predicate joins session_files to file_cache.
+        # Recording session_files for a path that was never cached leaks rows
+        # the hook can never use. Only record session_files when the file
+        # existed AND was cached.
+        from oracle.cache.file_cache import FileCache
+        from oracle.registry import ProjectRegistry
+
+        nonexistent = str(project_dir / "does_not_exist.py")
+        self._enqueue(
+            oracle_dir,
+            {
+                "session_id": "sess-ingest",
+                "cwd": str(project_dir),
+                "tool_name": "Read",
+                "tool_input": {"file_path": nonexistent},
+            },
+        )
+
+        registry = ProjectRegistry(oracle_dir)
+        project = registry.for_path(project_dir)
+        assert project is not None
+        assert project.store is not None
+        project.file_cache = FileCache(project.store)
+
+        def ensure_caches(p: ProjectState) -> None:
+            if p.file_cache is None and p.store is not None:
+                p.file_cache = FileCache(p.store)
+
+        process_ingest(registry, oracle_dir, ensure_caches)
+
+        served_at = project.store.get_session_file_served_at(
+            "sess-ingest", nonexistent
+        )
+        assert served_at is None, (
+            "session_files row leaked for a path Oracle has no cached content for"
+        )

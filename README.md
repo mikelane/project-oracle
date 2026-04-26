@@ -54,7 +54,7 @@ Project Oracle (MCP server)
 |-------|-----------|-------------|
 | **Passive learning** | PostToolUse hooks | When the agent uses built-in `Read`/`Grep`/`Bash`, hooks silently feed the results to Oracle's cache |
 | **Active nudging** | PreToolUse AYLO hooks | Before the agent re-reads a file, a question nudges it toward `oracle_read` instead |
-| **Direct tools** | 7 MCP tools | `oracle_read`, `oracle_grep`, `oracle_status`, `oracle_run`, `oracle_ask`, `oracle_forget`, `oracle_stats` |
+| **Direct tools** | 7 MCP tools | `oracle_status`, `oracle_ask`, `oracle_run`, `oracle_read`, `oracle_grep`, `oracle_forget`, `oracle_stats` |
 
 State persists in per-project SQLite databases, so the agent picks up where it left off across sessions.
 
@@ -81,31 +81,13 @@ Oracle tracks which files have been returned with full content during the curren
 
 ## Tools
 
-### `oracle_read(path)`
-
-Read a file with automatic caching and delta diffing.
-
-- **First call:** Returns full file content (cached for next time)
-- **Repeat, unchanged:** `"No changes since last read (2m ago)"` — 3 tokens
-- **Repeat, changed:** Returns only the unified diff of what changed
-
-### `oracle_grep(pattern, path=".")`
-
-Search source files for a regex pattern. Returns up to 50 matches.
-
 ### `oracle_status()`
 
-Aggregated project health snapshot: language stack, git branch, clean/dirty state, cached file count.
-
-### `oracle_run(commands)`
-
-Run allowlisted commands (test runners, linters, type checkers) through the cache layer. Returns cached results when source files haven't changed. Rejects arbitrary shell commands.
-
-**Default allowlist:** `pytest`, `ruff`, `mypy`, `go test`, `go build`, `npm test`, `pnpm test`, `eslint`, `tsc`, `cargo test`, `cargo build`
+Use at session start instead of running `git status`, `git branch`, and config globs separately. Returns one cached snapshot: language stack, package manager, git branch, clean/dirty state, and cached file count — built from data Oracle already has, so it costs nothing to refresh.
 
 ### `oracle_ask(question)`
 
-Natural-language questions about the project, routed to the cheapest handler:
+Replaces: the "what's going on with this project?" multi-tool dance (`git log`, read configs, grep for entry points, ask the agent to summarize) with one intent-routed call. A keyword classifier maps the question to the cheapest handler that can answer it — no LLM is used for routing.
 
 ```
 "what changed?"         → git cache (free)
@@ -116,11 +98,34 @@ Natural-language questions about the project, routed to the cheapest handler:
 "explain this pattern"  → Claude Haiku fallback (~$0.001)
 ```
 
-No LLM is used for routing — a keyword classifier maps questions to intents.
+This is the intent-grouped front door modeled on the "search/execute" MCP pattern. When you don't know which specific tool you need, ask first.
+
+### `oracle_run(commands)`
+
+Use instead of running `pytest` / `ruff` / `mypy` (etc.) directly through Bash when you might be re-running against unchanged code. Oracle keys results by source-file SHA-256, so when nothing relevant has changed since the last invocation, you get the cached output back in milliseconds rather than waiting for the command to actually execute. Arbitrary shell commands are rejected.
+
+**Default allowlist:** `pytest`, `ruff`, `mypy`, `go test`, `go build`, `npm test`, `pnpm test`, `eslint`, `tsc`, `cargo test`, `cargo build`
+
+### `oracle_read(path)`
+
+Tells you what changed since last read. On the **first** read of a file in a session, this tool returns the full content with no token savings vs. the built-in `Read` — you pay one MCP round trip in exchange for caching the file for next time. The savings show up on the **second and subsequent** reads in the same session:
+
+- **Repeat, unchanged:** `"No changes since last read (2m ago)"` — about 3 tokens
+- **Repeat, changed:** Returns only the unified diff of what changed
+
+Reach for this when you suspect a file may have changed and want to confirm cheaply, not as a blanket replacement for `Read` on first contact.
+
+### `oracle_grep(pattern, path=".")`
+
+Tells you whether a previously run grep would now return different matches. Use this to re-check a search you already ran earlier in the session — Oracle compares the current matches against the cached result and surfaces the delta. This is cache introspection, not a `Grep` replacement: for a brand-new pattern with no prior cache entry, the built-in `Grep` is just as good and avoids the MCP round trip.
 
 ### `oracle_forget(path)`
 
 Clear the cache for a specific file. The next `oracle_read` returns full content. Use when you need a guaranteed fresh read.
+
+### `oracle_stats()`
+
+Returns an adoption and savings scorecard for the current session and cumulatively. You get the cache hit rate with the underlying counts (e.g., `25% (5/20 oracle calls)`), tokens saved this session, and an oracle-vs-built-in adoption breakdown for `read` / `grep` / `run` with per-category call counts. When prior sessions exist, it also reports how this session's hit rate and adoption rate compare to the recent-session average. Call it mid-session to check whether your tool choices are paying off, or at session end to capture cumulative savings before the context clears.
 
 ## Installation
 

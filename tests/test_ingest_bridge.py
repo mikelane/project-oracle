@@ -408,3 +408,121 @@ class DescribeBuiltinToolLogging:
         result = process_ingest(registry, oracle_dir, lambda p: None)
 
         assert result.builtin_logged == 0
+
+
+@pytest.mark.medium
+class DescribeIngestSessionFilesWrite:
+    @pytest.fixture
+    def oracle_dir(self, tmp_path: Path) -> Path:
+        d = tmp_path / ".project-oracle"
+        d.mkdir()
+        (d / "projects").mkdir()
+        (d / "ingest").mkdir()
+        return d
+
+    @pytest.fixture
+    def project_dir(self, tmp_path: Path) -> Path:
+        project = tmp_path / "test-project"
+        project.mkdir()
+        (project / ".git").mkdir()
+        (project / "pyproject.toml").write_text('[project]\nname = "test"\n')
+        (project / "hello.py").write_text("print('hello world')\n")
+        return project
+
+    def _enqueue(self, oracle_dir: Path, entry: dict) -> None:  # noqa: ANN001
+        queue_dir = oracle_dir / "ingest"
+        queue_dir.mkdir(exist_ok=True)
+        existing = list(queue_dir.glob("*.json"))
+        idx = len(existing) + 1
+        (queue_dir / f"{idx:06d}.json").write_text(json.dumps(entry))
+
+    def it_writes_session_files_on_read_event(
+        self, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        from oracle.cache.file_cache import FileCache
+        from oracle.registry import ProjectRegistry
+
+        file_path = str(project_dir / "hello.py")
+        self._enqueue(
+            oracle_dir,
+            {
+                "session_id": "sess-ingest",
+                "cwd": str(project_dir),
+                "tool_name": "Read",
+                "tool_input": {"file_path": file_path},
+            },
+        )
+
+        registry = ProjectRegistry(oracle_dir)
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        project.file_cache = FileCache(project.store)
+
+        def ensure_caches(p: ProjectState) -> None:
+            if p.file_cache is None and p.store is not None:
+                p.file_cache = FileCache(p.store)
+
+        process_ingest(registry, oracle_dir, ensure_caches)
+
+        served_at = project.store.get_session_file_served_at("sess-ingest", file_path)
+        assert served_at is not None
+
+    def it_does_not_write_session_files_on_bash_event(
+        self, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+
+        self._enqueue(
+            oracle_dir,
+            {
+                "session_id": "sess-ingest",
+                "cwd": str(project_dir),
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            },
+        )
+
+        registry = ProjectRegistry(oracle_dir)
+        registry.for_path(project_dir)
+
+        process_ingest(registry, oracle_dir, lambda p: None)
+
+        # No session_files row written for Bash entries
+        project = registry.for_path(project_dir)
+        assert project is not None
+        assert project.store is not None
+        rows = project.store._conn.execute(
+            "SELECT count(*) AS c FROM session_files WHERE session_id = ?",
+            ("sess-ingest",),
+        ).fetchone()
+        assert rows["c"] == 0
+
+    def it_does_not_write_session_files_on_grep_event(
+        self, oracle_dir: Path, project_dir: Path
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+
+        self._enqueue(
+            oracle_dir,
+            {
+                "session_id": "sess-ingest",
+                "cwd": str(project_dir),
+                "tool_name": "Grep",
+                "tool_input": {"pattern": "needle"},
+            },
+        )
+
+        registry = ProjectRegistry(oracle_dir)
+        registry.for_path(project_dir)
+
+        process_ingest(registry, oracle_dir, lambda p: None)
+
+        project = registry.for_path(project_dir)
+        assert project is not None
+        assert project.store is not None
+        rows = project.store._conn.execute(
+            "SELECT count(*) AS c FROM session_files WHERE session_id = ?",
+            ("sess-ingest",),
+        ).fetchone()
+        assert rows["c"] == 0

@@ -77,8 +77,13 @@ def process_ingest(
         )
         builtin_logged += 1
 
-        # For Read entries, also populate the file cache
+        # For Read entries, record session_files (used by hook for binary
+        # blocking) and populate the file cache.
         if tool_name == "Read":
+            project.store.record_session_file(
+                session_id, str(resolved), int(time.time())
+            )
+
             if not resolved.is_file():
                 continue
 

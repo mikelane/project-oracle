@@ -777,6 +777,83 @@ class DescribeOracleForgetFileCacheNone:
         assert "file cache not initialized" in result.lower()
 
 
+class DescribeOracleReadSessionFilesWrite:
+    """Verify oracle_read writes to session_files on every successful serve."""
+
+    @pytest.fixture
+    def oracle_dir(self, tmp_path: Path) -> Path:
+        d = tmp_path / ".oracle"
+        d.mkdir()
+        (d / "projects").mkdir()
+        return d
+
+    @pytest.fixture
+    def project_dir(self, tmp_path: Path) -> Path:
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / ".git").mkdir()
+        (project / "pyproject.toml").write_text('[project]\nname = "test"\n')
+        (project / "hello.py").write_text("print('hello world')\n")
+        return project
+
+    def it_records_session_file_on_first_read(
+        self, oracle_dir: Path, project_dir: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+
+        file_path = str(project_dir / "hello.py")
+        oracle_read(file_path)
+
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        served_at = project.store.get_session_file_served_at(project.session_id, file_path)
+        assert served_at is not None
+
+    def it_records_session_file_on_repeat_read(
+        self, oracle_dir: Path, project_dir: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+
+        file_path = str(project_dir / "hello.py")
+        oracle_read(file_path)
+        oracle_read(file_path)
+
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        served_at = project.store.get_session_file_served_at(project.session_id, file_path)
+        assert served_at is not None
+
+    def it_does_not_record_session_file_when_path_outside_root(
+        self, oracle_dir: Path, project_dir: Path, mocker: MockerFixture
+    ) -> None:
+        from oracle.registry import ProjectRegistry
+        from oracle.server import oracle_read
+
+        registry = ProjectRegistry(oracle_dir)
+        mocker.patch("oracle.server._registry", registry)
+
+        # Establish project context first
+        oracle_read(str(project_dir / "hello.py"))
+        # Then try a path outside project root
+        oracle_read("/etc/passwd")
+
+        project = registry.for_path(project_dir / "hello.py")
+        assert project is not None
+        assert project.store is not None
+        served_at = project.store.get_session_file_served_at(project.session_id, "/etc/passwd")
+        assert served_at is None
+
+
 class DescribeMainEntryPoint:
     """Test the main() entry point."""
 

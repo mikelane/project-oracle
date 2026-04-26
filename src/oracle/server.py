@@ -100,6 +100,10 @@ def oracle_read(path: str) -> str:
         return "Error: file cache not initialized"
     response, tokens_saved = project.file_cache.smart_read_with_stats(str(resolved))
     cache_hit = tokens_saved > 0
+    if project.store is not None:
+        project.store.record_session_file(
+            project.session_id, str(resolved), int(time.time())
+        )
     _log(project, "oracle_read", str(resolved), cache_hit, tokens_saved)
     return response
 

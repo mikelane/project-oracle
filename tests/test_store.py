@@ -48,7 +48,13 @@ class DescribeOracleStoreInit:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             tables = sorted(row[0] for row in cursor.fetchall() if not row[0].startswith("sqlite_"))
             conn.close()
-            assert tables == ["agent_log", "command_results", "file_cache", "git_state"]
+            assert tables == [
+                "agent_log",
+                "command_results",
+                "file_cache",
+                "git_state",
+                "session_files",
+            ]
         finally:
             store2.close()
 
@@ -60,9 +66,55 @@ class DescribeOracleStoreInit:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             tables = sorted(row[0] for row in cursor.fetchall() if not row[0].startswith("sqlite_"))
             conn.close()
-            assert tables == ["agent_log", "command_results", "file_cache", "git_state"]
+            assert tables == [
+                "agent_log",
+                "command_results",
+                "file_cache",
+                "git_state",
+                "session_files",
+            ]
         finally:
             store.close()
+
+
+@pytest.mark.medium
+class DescribeSessionFilesOperations:
+    def it_records_a_session_file_serve(self, store: OracleStore) -> None:
+        store.record_session_file("sess-1", "src/foo.py", 1000)
+        served_at = store.get_session_file_served_at("sess-1", "src/foo.py")
+        assert served_at == 1000
+
+    def it_returns_none_when_session_file_missing(self, store: OracleStore) -> None:
+        assert store.get_session_file_served_at("sess-x", "src/missing.py") is None
+
+    def it_replaces_served_at_on_repeat_record(self, store: OracleStore) -> None:
+        store.record_session_file("sess-1", "src/foo.py", 1000)
+        store.record_session_file("sess-1", "src/foo.py", 2000)
+        assert store.get_session_file_served_at("sess-1", "src/foo.py") == 2000
+
+    def it_isolates_rows_per_session(self, store: OracleStore) -> None:
+        store.record_session_file("sess-A", "src/foo.py", 1000)
+        store.record_session_file("sess-B", "src/foo.py", 2000)
+        assert store.get_session_file_served_at("sess-A", "src/foo.py") == 1000
+        assert store.get_session_file_served_at("sess-B", "src/foo.py") == 2000
+
+    def it_returns_disk_sha_only_when_session_file_present(self, store: OracleStore) -> None:
+        store.upsert_file_cache("src/foo.py", b"data", "abc", "disk-hash-1", 1000)
+        # No session_files row yet
+        assert store.get_session_file_disk_sha256("sess-1", "src/foo.py") is None
+        store.record_session_file("sess-1", "src/foo.py", 1500)
+        assert store.get_session_file_disk_sha256("sess-1", "src/foo.py") == "disk-hash-1"
+
+    def it_returns_none_when_file_cache_missing_even_if_session_present(
+        self, store: OracleStore
+    ) -> None:
+        store.record_session_file("sess-1", "src/orphan.py", 1500)
+        assert store.get_session_file_disk_sha256("sess-1", "src/orphan.py") is None
+
+    def it_returns_none_for_other_sessions(self, store: OracleStore) -> None:
+        store.upsert_file_cache("src/foo.py", b"data", "abc", "disk-hash-1", 1000)
+        store.record_session_file("sess-A", "src/foo.py", 1500)
+        assert store.get_session_file_disk_sha256("sess-B", "src/foo.py") is None
 
 
 @pytest.mark.medium

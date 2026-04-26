@@ -108,7 +108,7 @@ Use instead of running `pytest` / `ruff` / `mypy` (etc.) directly through Bash w
 
 ### `oracle_read(path)`
 
-Tells you what changed since last read. On the **first** read of a file in a session, this tool returns the full content with no token savings vs. the built-in `Read` — you pay one MCP round trip for the privilege of caching the file for next time. The savings show up on the **second and subsequent** reads in the same session:
+Tells you what changed since last read. On the **first** read of a file in a session, this tool returns the full content with no token savings vs. the built-in `Read` — you pay one MCP round trip in exchange for caching the file for next time. The savings show up on the **second and subsequent** reads in the same session:
 
 - **Repeat, unchanged:** `"No changes since last read (2m ago)"` — about 3 tokens
 - **Repeat, changed:** Returns only the unified diff of what changed
@@ -125,7 +125,7 @@ Clear the cache for a specific file. The next `oracle_read` returns full content
 
 ### `oracle_stats()`
 
-Returns the agent's adoption and savings scorecard for the current session and cumulatively: cache hit rate (oracle calls that returned a delta vs. full content), tokens saved this session, oracle-vs-built-in adoption ratios broken down by `read` / `grep` / `run`, and a trend line comparing the current session against recent ones. Call it mid-session to check whether your tool choices are actually paying off, or at session end to capture cumulative savings before the context clears.
+Returns an adoption and savings scorecard for the current session and cumulatively. You get the cache hit rate with the underlying counts (e.g., `25% (5/20 oracle calls)`), tokens saved this session, and an oracle-vs-built-in adoption breakdown for `read` / `grep` / `run` with per-category call counts. When prior sessions exist, it also reports how this session's hit rate and adoption rate compare to the recent-session average. Call it mid-session to check whether your tool choices are paying off, or at session end to capture cumulative savings before the context clears.
 
 ## Installation
 

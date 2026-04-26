@@ -91,9 +91,7 @@ def process_ingest(
                 continue
 
             project.file_cache.smart_read(str(resolved))
-            project.store.record_session_file(
-                session_id, str(resolved), int(time.time())
-            )
+            project.store.record_session_file(session_id, str(resolved), int(time.time()))
             populated += 1
 
     return IngestResult(cache_populated=populated, builtin_logged=builtin_logged)

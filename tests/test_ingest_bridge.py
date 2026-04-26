@@ -436,9 +436,7 @@ class DescribeIngestSessionFilesWrite:
         idx = len(existing) + 1
         (queue_dir / f"{idx:06d}.json").write_text(json.dumps(entry))
 
-    def it_writes_session_files_on_read_event(
-        self, oracle_dir: Path, project_dir: Path
-    ) -> None:
+    def it_writes_session_files_on_read_event(self, oracle_dir: Path, project_dir: Path) -> None:
         from oracle.cache.file_cache import FileCache
         from oracle.registry import ProjectRegistry
 
@@ -560,9 +558,7 @@ class DescribeIngestSessionFilesWrite:
 
         process_ingest(registry, oracle_dir, ensure_caches)
 
-        served_at = project.store.get_session_file_served_at(
-            "sess-ingest", nonexistent
-        )
+        served_at = project.store.get_session_file_served_at("sess-ingest", nonexistent)
         assert served_at is None, (
             "session_files row leaked for a path Oracle has no cached content for"
         )

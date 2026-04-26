@@ -55,7 +55,21 @@ project_db_path() {
 TOOL_INPUT=$(cat 2>/dev/null) || true
 [[ -z "$TOOL_INPUT" ]] && exit 0
 
-TOOL_NAME=$(printf '%s' "$TOOL_INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || exit 0
+# Single jq call extracts everything we might need: tool_name, session_id,
+# file_path, and presence flags for offset/limit. Tab-separated values are
+# split by IFS read below. Each tab-separated cell is "-" when absent so
+# bash can detect missing fields without ambiguity.
+JQ_OUT=$(printf '%s' "$TOOL_INPUT" | jq -r '
+    [
+        .tool_name // "",
+        .session_id // "",
+        .tool_input.file_path // "",
+        (if (.tool_input | has("offset")) then "1" else "" end),
+        (if (.tool_input | has("limit")) then "1" else "" end)
+    ] | @tsv
+' 2>/dev/null) || exit 0
+
+IFS=$'\t' read -r TOOL_NAME SESSION_ID FILE_PATH HAS_OFFSET HAS_LIMIT <<< "$JQ_OUT"
 [[ -z "$TOOL_NAME" ]] && exit 0
 
 # --- Grep: advisory only ---
@@ -75,15 +89,10 @@ if [[ "$TOOL_NAME" != "Read" ]]; then
     exit 0
 fi
 
-SESSION_ID=$(printf '%s' "$TOOL_INPUT" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 [[ -z "$SESSION_ID" ]] && exit 0
-
-FILE_PATH=$(printf '%s' "$TOOL_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null) || exit 0
 [[ -z "$FILE_PATH" ]] && exit 0
 
 # Partial read (non-default offset or limit) → allow.
-HAS_OFFSET=$(printf '%s' "$TOOL_INPUT" | jq -r '(.tool_input.offset // empty) | tostring' 2>/dev/null) || HAS_OFFSET=""
-HAS_LIMIT=$(printf '%s' "$TOOL_INPUT" | jq -r '(.tool_input.limit // empty) | tostring' 2>/dev/null) || HAS_LIMIT=""
 if [[ -n "$HAS_OFFSET" || -n "$HAS_LIMIT" ]]; then
     exit 0
 fi
@@ -100,10 +109,18 @@ PROJECT_ROOT=$(find_project_root "$RESOLVED_PATH") || exit 0
 DB_PATH=$(project_db_path "$PROJECT_ROOT")
 [[ -f "$DB_PATH" ]] || exit 0
 
-# Lookup cached disk_sha256 for (session_id, path) — only returns a row
-# when the file was both served this session AND has a file_cache entry.
+# Lookup cached disk_sha256 for (session_id, path) AND compute the on-disk
+# SHA in parallel. Both are independent and the bottleneck is fork/exec
+# overhead, so running shasum in the background while sqlite3 executes
+# halves the serial cost on the hot path.
 ESCAPED_SESSION=$(printf '%s' "$SESSION_ID" | sed "s/'/''/g")
 ESCAPED_PATH=$(printf '%s' "$RESOLVED_PATH" | sed "s/'/''/g")
+DISK_SHA_FILE=$(mktemp -t aylo-disk-sha.XXXXXX) || exit 0
+trap 'rm -f "$DISK_SHA_FILE"' EXIT
+
+(shasum -a 256 "$RESOLVED_PATH" 2>/dev/null | awk '{print $1}' > "$DISK_SHA_FILE") &
+DISK_SHA_PID=$!
+
 CACHED_SHA=$(timeout "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
     -readonly \
     -batch \
@@ -111,12 +128,15 @@ CACHED_SHA=$(timeout "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
     -list \
     -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" \
     "$DB_PATH" \
-    "SELECT f.disk_sha256 FROM file_cache f JOIN session_files s ON s.path = f.path WHERE s.session_id = '$ESCAPED_SESSION' AND f.path = '$ESCAPED_PATH';" 2>/dev/null) || exit 0
+    "SELECT f.disk_sha256 FROM file_cache f JOIN session_files s ON s.path = f.path WHERE s.session_id = '$ESCAPED_SESSION' AND f.path = '$ESCAPED_PATH';" 2>/dev/null) || {
+    wait "$DISK_SHA_PID" 2>/dev/null || true
+    exit 0
+}
+
+wait "$DISK_SHA_PID" 2>/dev/null || true
+DISK_SHA=$(<"$DISK_SHA_FILE")
 
 [[ -z "$CACHED_SHA" || "$CACHED_SHA" == "NULL" ]] && exit 0
-
-# Compute current on-disk SHA-256. Failure (file deleted, permissions) → allow.
-DISK_SHA=$(shasum -a 256 "$RESOLVED_PATH" 2>/dev/null | awk '{print $1}') || exit 0
 [[ -z "$DISK_SHA" ]] && exit 0
 
 # Block iff cached disk SHA matches current on-disk SHA.

@@ -61,10 +61,17 @@ Feature: PreToolUse hook blocks only provably redundant Reads in the current ses
     Then the hook exits with code 0
 
   @ISSUE-13
-  Scenario: Partial Read with non-default offset is allowed
-    Given session_files contains a row for the current session and "src/foo.py"
+  Scenario: Partial Read overrides the would-block SHA-match path
+    Given the agent called Read on "src/foo.py" earlier in the current session
+    And session_files contains a row for the current session and "src/foo.py"
     And file_cache.disk_sha256 for "src/foo.py" matches on-disk
     When the hook fires for Read on "src/foo.py" with offset 0 and limit 100
+    Then the hook exits with code 0
+
+  @ISSUE-13
+  Scenario: Partial Read of an unseen file is allowed
+    Given session_files contains no row for the current session and "src/never.py"
+    When the hook fires for Read on "src/never.py" with offset 10 and limit 50
     Then the hook exits with code 0
 
   @ISSUE-13

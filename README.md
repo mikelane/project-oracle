@@ -170,6 +170,20 @@ Add to your Claude Code settings (`~/.claude/settings.json`):
 }
 ```
 
+> ⚠️ **Warning: register Oracle at user scope only**
+>
+> Register Oracle in `~/.claude/settings.json` (user scope) as shown above. **Do not register Oracle in a project-level `.mcp.json` file.**
+>
+> Due to upstream bug [anthropics/claude-code#13898](https://github.com/anthropics/claude-code/issues/13898), custom subagents cannot reach MCP servers configured at project scope. Instead of erroring, they silently hallucinate plausible-looking results — meaning **custom subagents will return fabricated Oracle results with no error indicator**. Made-up `oracle_read` deltas, made-up `oracle_status` snapshots, made-up cache hits. The subagent reports success and the agent acts on the fabricated data.
+>
+> **What works correctly:**
+> - User-scope registration in `~/.claude/settings.json` (the example above).
+> - The built-in `general-purpose` subagent — use it when subagent invocation is required. It is unaffected by this bug.
+>
+> There is no Oracle-side workaround; the bug is in Claude Code's subagent MCP plumbing.
+>
+> *Last verified: 2026-04-26.* Remove this warning when anthropics/claude-code#13898 is closed AND a Claude Code release notes entry confirms the fix.
+
 ### 2. Install the AYLO hooks
 
 Copy the hook scripts and register them in your Claude Code settings:

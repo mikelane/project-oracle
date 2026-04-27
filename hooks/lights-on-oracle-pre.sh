@@ -64,103 +64,112 @@ project_db_path() {
     echo "$ORACLE_DIR/projects/$pid/oracle.db"
 }
 
-TOOL_INPUT=$(cat 2>/dev/null) || true
-[[ -z "$TOOL_INPUT" ]] && exit 0
+_aylo_main() {
+    TOOL_INPUT=$(cat 2>/dev/null) || true
+    [[ -z "$TOOL_INPUT" ]] && exit 0
 
-# Single jq call extracts everything we might need: tool_name, session_id,
-# file_path, and presence flags for offset/limit. Tab-separated values are
-# split by IFS read below. Each tab-separated cell is "-" when absent so
-# bash can detect missing fields without ambiguity.
-JQ_OUT=$(printf '%s' "$TOOL_INPUT" | jq -r '
-    [
-        .tool_name // "",
-        .session_id // "",
-        .tool_input.file_path // "",
-        (if (.tool_input | has("offset")) then "1" else "" end),
-        (if (.tool_input | has("limit")) then "1" else "" end)
-    ] | @tsv
-' 2>/dev/null) || exit 0
+    # Single jq call extracts everything we might need: tool_name, session_id,
+    # file_path, and presence flags for offset/limit. Tab-separated values are
+    # split by IFS read below. Each tab-separated cell is "-" when absent so
+    # bash can detect missing fields without ambiguity.
+    JQ_OUT=$(printf '%s' "$TOOL_INPUT" | jq -r '
+        [
+            .tool_name // "",
+            .session_id // "",
+            .tool_input.file_path // "",
+            (if (.tool_input | has("offset")) then "1" else "" end),
+            (if (.tool_input | has("limit")) then "1" else "" end)
+        ] | @tsv
+    ' 2>/dev/null) || exit 0
 
-IFS=$'\t' read -r TOOL_NAME SESSION_ID FILE_PATH HAS_OFFSET HAS_LIMIT <<< "$JQ_OUT"
-[[ -z "$TOOL_NAME" ]] && exit 0
+    IFS=$'\t' read -r TOOL_NAME SESSION_ID FILE_PATH HAS_OFFSET HAS_LIMIT <<< "$JQ_OUT"
+    [[ -z "$TOOL_NAME" ]] && exit 0
 
-# --- Grep: advisory only ---
-if [[ "$TOOL_NAME" == "Grep" ]]; then
-    emit_advisory "Use oracle_grep (mcp__project-oracle__oracle_grep) instead of Grep. It returns the same results but caches them — repeated searches cost nothing."
-    exit 0
-fi
+    # --- Grep: advisory only ---
+    if [[ "$TOOL_NAME" == "Grep" ]]; then
+        emit_advisory "Use oracle_grep (mcp__project-oracle__oracle_grep) instead of Grep. It returns the same results but caches them — repeated searches cost nothing."
+        exit 0
+    fi
 
-# --- Bash: advisory only ---
-if [[ "$TOOL_NAME" == "Bash" ]]; then
-    emit_advisory "Check: is this a test/lint/build command? If so, use oracle_run (mcp__project-oracle__oracle_run) instead — it caches results keyed by source file hashes. If the code hasn't changed since last run, you get the cached result instantly instead of waiting for the command to execute."
-    exit 0
-fi
+    # --- Bash: advisory only ---
+    if [[ "$TOOL_NAME" == "Bash" ]]; then
+        emit_advisory "Check: is this a test/lint/build command? If so, use oracle_run (mcp__project-oracle__oracle_run) instead — it caches results keyed by source file hashes. If the code hasn't changed since last run, you get the cached result instantly instead of waiting for the command to execute."
+        exit 0
+    fi
 
-# --- Read: binary block on provably redundant reads ---
-if [[ "$TOOL_NAME" != "Read" ]]; then
-    exit 0
-fi
+    # --- Read: binary block on provably redundant reads ---
+    if [[ "$TOOL_NAME" != "Read" ]]; then
+        exit 0
+    fi
 
-# No portable timer means we cannot enforce the SQLite query timeout, so
-# the Read binary block is unavailable on this platform. Fail open
-# silently — Bash and Grep advisories already ran above.
-[[ -z "$TIMEOUT_CMD" ]] && exit 0
+    # No portable timer means we cannot enforce the SQLite query timeout, so
+    # the Read binary block is unavailable on this platform. Fail open
+    # silently — Bash and Grep advisories already ran above.
+    [[ -z "$TIMEOUT_CMD" ]] && exit 0
 
-[[ -z "$SESSION_ID" ]] && exit 0
-[[ -z "$FILE_PATH" ]] && exit 0
+    [[ -z "$SESSION_ID" ]] && exit 0
+    [[ -z "$FILE_PATH" ]] && exit 0
 
-# Partial read (non-default offset or limit) → allow.
-if [[ -n "$HAS_OFFSET" || -n "$HAS_LIMIT" ]]; then
-    exit 0
-fi
+    # Partial read (non-default offset or limit) → allow.
+    if [[ -n "$HAS_OFFSET" || -n "$HAS_LIMIT" ]]; then
+        exit 0
+    fi
 
-# Resolve path (canonicalize symlinks). If realpath fails (worktree
-# deleted, dangling symlink) → allow.
-RESOLVED_PATH=$(realpath "$FILE_PATH" 2>/dev/null) || exit 0
-[[ -z "$RESOLVED_PATH" ]] && exit 0
+    # Resolve path (canonicalize symlinks). If realpath fails (worktree
+    # deleted, dangling symlink) → allow.
+    RESOLVED_PATH=$(realpath "$FILE_PATH" 2>/dev/null) || exit 0
+    [[ -z "$RESOLVED_PATH" ]] && exit 0
 
-# Path must be inside a tracked project root.
-PROJECT_ROOT=$(find_project_root "$RESOLVED_PATH") || exit 0
-[[ -z "$PROJECT_ROOT" ]] && exit 0
+    # Path must be inside a tracked project root.
+    PROJECT_ROOT=$(find_project_root "$RESOLVED_PATH") || exit 0
+    [[ -z "$PROJECT_ROOT" ]] && exit 0
 
-DB_PATH=$(project_db_path "$PROJECT_ROOT")
-[[ -f "$DB_PATH" ]] || exit 0
+    DB_PATH=$(project_db_path "$PROJECT_ROOT")
+    [[ -f "$DB_PATH" ]] || exit 0
 
-# Lookup cached disk_sha256 for (session_id, path) AND compute the on-disk
-# SHA in parallel. Both are independent and the bottleneck is fork/exec
-# overhead, so running shasum in the background while sqlite3 executes
-# halves the serial cost on the hot path.
-ESCAPED_SESSION=$(printf '%s' "$SESSION_ID" | sed "s/'/''/g")
-ESCAPED_PATH=$(printf '%s' "$RESOLVED_PATH" | sed "s/'/''/g")
-DISK_SHA_FILE=$(mktemp -t aylo-disk-sha.XXXXXX) || exit 0
-trap 'rm -f "$DISK_SHA_FILE"' EXIT
+    # Lookup cached disk_sha256 for (session_id, path) AND compute the on-disk
+    # SHA in parallel. Both are independent and the bottleneck is fork/exec
+    # overhead, so running shasum in the background while sqlite3 executes
+    # halves the serial cost on the hot path.
+    ESCAPED_SESSION=$(printf '%s' "$SESSION_ID" | sed "s/'/''/g")
+    ESCAPED_PATH=$(printf '%s' "$RESOLVED_PATH" | sed "s/'/''/g")
+    DISK_SHA_FILE=$(mktemp -t aylo-disk-sha.XXXXXX) || exit 0
+    trap 'rm -f "$DISK_SHA_FILE"' EXIT
 
-(shasum -a 256 "$RESOLVED_PATH" 2>/dev/null | awk '{print $1}' > "$DISK_SHA_FILE") &
-DISK_SHA_PID=$!
+    (shasum -a 256 "$RESOLVED_PATH" 2>/dev/null | awk '{print $1}' > "$DISK_SHA_FILE") &
+    DISK_SHA_PID=$!
 
-CACHED_SHA=$("$TIMEOUT_CMD" "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
-    -readonly \
-    -batch \
-    -noheader \
-    -list \
-    -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" \
-    "$DB_PATH" \
-    "SELECT f.disk_sha256 FROM file_cache f JOIN session_files s ON s.path = f.path WHERE s.session_id = '$ESCAPED_SESSION' AND f.path = '$ESCAPED_PATH';" 2>/dev/null) || {
+    CACHED_SHA=$("$TIMEOUT_CMD" "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
+        -readonly \
+        -batch \
+        -noheader \
+        -list \
+        -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" \
+        "$DB_PATH" \
+        "SELECT f.disk_sha256 FROM file_cache f JOIN session_files s ON s.path = f.path WHERE s.session_id = '$ESCAPED_SESSION' AND f.path = '$ESCAPED_PATH';" 2>/dev/null) || {
+        wait "$DISK_SHA_PID" 2>/dev/null || true
+        exit 0
+    }
+
     wait "$DISK_SHA_PID" 2>/dev/null || true
+    DISK_SHA=$(<"$DISK_SHA_FILE")
+
+    [[ -z "$CACHED_SHA" || "$CACHED_SHA" == "NULL" ]] && exit 0
+    [[ -z "$DISK_SHA" ]] && exit 0
+
+    # Block iff cached disk SHA matches current on-disk SHA.
+    if [[ "$CACHED_SHA" == "$DISK_SHA" ]]; then
+        printf 'File unchanged since last read: %s\nThe agent already has this content from earlier in the session. Skip this Read; reuse the prior content. If the cached content was lost, use oracle_read for a compact delta.\n' \
+            "$RESOLVED_PATH" >&2
+        exit 2
+    fi
+
     exit 0
 }
 
-wait "$DISK_SHA_PID" 2>/dev/null || true
-DISK_SHA=$(<"$DISK_SHA_FILE")
-
-[[ -z "$CACHED_SHA" || "$CACHED_SHA" == "NULL" ]] && exit 0
-[[ -z "$DISK_SHA" ]] && exit 0
-
-# Block iff cached disk SHA matches current on-disk SHA.
-if [[ "$CACHED_SHA" == "$DISK_SHA" ]]; then
-    printf 'File unchanged since last read: %s\nThe agent already has this content from earlier in the session. Skip this Read; reuse the prior content. If the cached content was lost, use oracle_read for a compact delta.\n' \
-        "$RESOLVED_PATH" >&2
-    exit 2
+# Run main logic only when executed directly. Sourcing the script (e.g., from
+# tests/test_project_hash_parity.py) loads the helper functions without firing
+# the hook's main pipeline.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    _aylo_main "$@"
 fi
-
-exit 0

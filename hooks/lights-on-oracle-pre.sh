@@ -15,6 +15,18 @@ PROJECT_MARKERS=(.git package.json pyproject.toml go.mod Cargo.toml)
 SQLITE_BUSY_TIMEOUT_MS=30
 SQLITE_QUERY_TIMEOUT_S=2
 
+# Resolve a portable timer. macOS does not ship GNU `timeout` by default;
+# `brew install coreutils` provides `gtimeout`. If neither is present the
+# Read binary-block path will fail open silently (see below) — Bash and
+# Grep advisories do not need a timer and stay functional regardless.
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD=gtimeout
+else
+    TIMEOUT_CMD=
+fi
+
 emit_advisory() {
     local msg="$1"
     jq -n --arg q "$msg" '{
@@ -89,6 +101,11 @@ if [[ "$TOOL_NAME" != "Read" ]]; then
     exit 0
 fi
 
+# No portable timer means we cannot enforce the SQLite query timeout, so
+# the Read binary block is unavailable on this platform. Fail open
+# silently — Bash and Grep advisories already ran above.
+[[ -z "$TIMEOUT_CMD" ]] && exit 0
+
 [[ -z "$SESSION_ID" ]] && exit 0
 [[ -z "$FILE_PATH" ]] && exit 0
 
@@ -121,7 +138,7 @@ trap 'rm -f "$DISK_SHA_FILE"' EXIT
 (shasum -a 256 "$RESOLVED_PATH" 2>/dev/null | awk '{print $1}' > "$DISK_SHA_FILE") &
 DISK_SHA_PID=$!
 
-CACHED_SHA=$(timeout "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
+CACHED_SHA=$("$TIMEOUT_CMD" "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
     -readonly \
     -batch \
     -noheader \

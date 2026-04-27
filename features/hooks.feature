@@ -113,3 +113,18 @@ Feature: PreToolUse hook blocks only provably redundant Reads in the current ses
     Then the hook exits with code 0
     And stdout contains "additionalContext"
     And stdout contains "oracle_grep"
+
+  @ISSUE-13
+  Scenario: No timeout binary on PATH fails open silently
+    Given the agent called Read on "src/foo.py" earlier in the current session
+    And file_cache.disk_sha256 for "src/foo.py" matches on-disk
+    And neither timeout nor gtimeout is on PATH
+    When the hook fires for Read on "src/foo.py" with no offset or limit
+    Then the hook exits with code 0
+    And stderr is empty
+
+  @ISSUE-13
+  Scenario: Hook source explicitly detects timeout/gtimeout availability
+    When inspecting the hook source for the timeout fallback
+    Then the hook source declares both "timeout" and "gtimeout" as candidates
+    And the hook source uses the resolved timeout command via a variable

@@ -54,6 +54,8 @@ def _record_session(context, rel_path: str) -> None:
 def _run_hook(context, payload: dict, file_path_for_resolve: str | None = None) -> None:
     env = os.environ.copy()
     env["ORACLE_DIR"] = str(context.hook_oracle_dir)
+    if getattr(context, "hook_path_override", None) is not None:
+        env["PATH"] = context.hook_path_override
     if hasattr(context, "hook_store"):
         context.hook_store.close()
         context.hook_store = OracleStore(context.hook_db_path)
@@ -223,6 +225,72 @@ def step_db_missing(context):
 @given('the agent first called Read on "{rel_path}" with offset 0 and limit 100')
 def step_agent_partial_read(context, rel_path):
     _make_file(context, rel_path)
+
+
+@given("neither timeout nor gtimeout is on PATH")
+def step_no_timeout_binary(context):
+    # Build a tmp dir with only the helpers the hook genuinely needs (jq,
+    # sqlite3, shasum, awk, sed, mktemp, realpath, dirname, printf, cat)
+    # but explicitly exclude `timeout` and `gtimeout` so the fallback path
+    # is exercised end-to-end.
+    isolated = context.tmp_dir / "no-timeout-bin"
+    isolated.mkdir(exist_ok=True)
+    helpers = [
+        "jq",
+        "sqlite3",
+        "shasum",
+        "awk",
+        "sed",
+        "mktemp",
+        "realpath",
+        "dirname",
+        "printf",
+        "cat",
+        "bash",
+        "head",
+        "rm",
+    ]
+    seen: set[str] = set()
+    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+        if not path_dir:
+            continue
+        for helper in helpers:
+            if helper in seen:
+                continue
+            candidate = Path(path_dir) / helper
+            if candidate.exists():
+                link = isolated / helper
+                if not link.exists():
+                    link.symlink_to(candidate)
+                seen.add(helper)
+    context.hook_path_override = str(isolated)
+
+
+@then("stderr is empty")
+def step_then_stderr_empty(context):
+    assert context.hook_stderr == "", f"Expected empty stderr, got: {context.hook_stderr!r}"
+
+
+@when("inspecting the hook source for the timeout fallback")
+def step_inspect_timeout_fallback(context):
+    context.hook_source_text = HOOK_SCRIPT.read_text()
+
+
+@then('the hook source declares both "timeout" and "gtimeout" as candidates')
+def step_then_source_has_candidates(context):
+    src = context.hook_source_text
+    assert "command -v timeout" in src, "Hook does not probe for `timeout` via command -v"
+    assert "command -v gtimeout" in src, "Hook does not probe for `gtimeout` via command -v"
+
+
+@then("the hook source uses the resolved timeout command via a variable")
+def step_then_source_uses_variable(context):
+    src = context.hook_source_text
+    assert "TIMEOUT_CMD=" in src, "Hook does not assign TIMEOUT_CMD"
+    assert '"$TIMEOUT_CMD"' in src, (
+        "Hook does not invoke timeout indirectly via $TIMEOUT_CMD — "
+        "the literal `timeout` invocation will fail on stock macOS."
+    )
 
 
 @given('the ingest worker added a row for the current session and "{rel_path}"')

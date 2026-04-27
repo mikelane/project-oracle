@@ -25,14 +25,28 @@ def python_project_hash(root: Path) -> str:
 
 
 def bash_project_hash(root: Path) -> str:
-    """Run the same shell pipeline the hook uses."""
+    """Invoke the actual project_db_path function from the hook script.
+
+    Sources the hook to load helper functions without triggering main logic
+    (the hook gates _aylo_main on BASH_SOURCE/$0). Calls project_db_path with
+    the test root and extracts the hash from the returned db path.
+    """
     result = subprocess.run(
-        ["bash", "-c", f'printf "%s" "{root}" | shasum -a 256 | head -c 8'],
+        [
+            "bash",
+            "-c",
+            f'source "{HOOK_SCRIPT}"; project_db_path "$1"',
+            "_",  # $0
+            str(root),
+        ],
         capture_output=True,
         text=True,
         check=True,
     )
-    return result.stdout
+    db_path = result.stdout.strip()
+    # project_db_path echoes "<ORACLE_DIR>/projects/<hash>/oracle.db"
+    # The 8-char hash is the parent directory name.
+    return Path(db_path).parent.name
 
 
 @pytest.mark.medium

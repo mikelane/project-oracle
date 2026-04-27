@@ -1,32 +1,33 @@
 #!/bin/bash
 # "Are Your Lights On?" — PreToolUse:Read/Grep/Bash
-# Redirects the agent to oracle_* tools instead of built-in Read/Grep/Bash.
-# Uses a per-session counter to escalate from nudge → warning → demand.
-# Always exits 0 (non-blocking), but the message gets harder to ignore.
+# Read: binary block when the file is provably redundant within the current
+#   Claude Code session — i.e., (session_id, path) is in session_files AND
+#   file_cache.disk_sha256 matches the on-disk SHA-256. Any other case
+#   exits 0 (allow). Failure modes (timeout, missing DB, malformed input,
+#   non-tracked path, partial read) all exit 0.
+# Grep / Bash: advisory behavior only — emit additionalContext nudging
+#   toward oracle_grep / oracle_run. No escalation, no blocking.
 
 set -euo pipefail
 
-# --- Per-session escalation counter ---
-COUNTER_DIR="${TMPDIR:-/tmp}/oracle-aylo-$$"
-mkdir -p "$COUNTER_DIR" 2>/dev/null || true
+ORACLE_DIR="${ORACLE_DIR:-$HOME/.project-oracle}"
+PROJECT_MARKERS=(.git package.json pyproject.toml go.mod Cargo.toml)
+SQLITE_BUSY_TIMEOUT_MS=30
+SQLITE_QUERY_TIMEOUT_S=2
 
-get_count() {
-    local tool="$1"
-    local f="$COUNTER_DIR/$tool"
-    if [[ -f "$f" ]]; then
-        read -r n < "$f"
-        echo "$((n + 1))"
-    else
-        echo "1"
-    fi
-}
+# Resolve a portable timer. macOS does not ship GNU `timeout` by default;
+# `brew install coreutils` provides `gtimeout`. If neither is present the
+# Read binary-block path will fail open silently (see below) — Bash and
+# Grep advisories do not need a timer and stay functional regardless.
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD=timeout
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD=gtimeout
+else
+    TIMEOUT_CMD=
+fi
 
-set_count() {
-    local tool="$1" count="$2"
-    echo "$count" > "$COUNTER_DIR/$tool" 2>/dev/null || true
-}
-
-emit_pre() {
+emit_advisory() {
     local msg="$1"
     jq -n --arg q "$msg" '{
       hookSpecificOutput: {
@@ -37,48 +38,138 @@ emit_pre() {
     }'
 }
 
-TOOL_INPUT=$(cat 2>/dev/null) || true
-[[ -z "$TOOL_INPUT" ]] && exit 0
+find_project_root() {
+    # Walk up from $1 looking for any PROJECT_MARKER. Echo the root or
+    # nothing if not found.
+    local current="$1"
+    [[ -d "$current" ]] || current="$(dirname "$current")"
+    while [[ -n "$current" && "$current" != "/" ]]; do
+        for marker in "${PROJECT_MARKERS[@]}"; do
+            if [[ -e "$current/$marker" ]]; then
+                echo "$current"
+                return 0
+            fi
+        done
+        current="$(dirname "$current")"
+    done
+    return 1
+}
 
-TOOL_NAME=$(echo "$TOOL_INPUT" | jq -r '.tool_name // empty' 2>/dev/null) || true
-[[ -z "$TOOL_NAME" ]] && exit 0
+project_db_path() {
+    # Echo the per-project SQLite database path for project root $1.
+    # Returns 0 even if the file doesn't exist; callers must check.
+    local root="$1"
+    local pid
+    pid="$(printf '%s' "$root" | shasum -a 256 | head -c 8)"
+    echo "$ORACLE_DIR/projects/$pid/oracle.db"
+}
 
-# --- Read ---
-if [[ "$TOOL_NAME" == "Read" ]]; then
-    N=$(get_count Read)
-    set_count Read "$N"
-    if (( N <= 2 )); then
-        emit_pre "STOP. Check: do you already have this file's content in your conversation context? If yes, you don't need to read it again. If no, use oracle_read (mcp__project-oracle__oracle_read) instead of Read — it caches the content so your next read costs 3 tokens instead of hundreds."
-    elif (( N <= 5 )); then
-        emit_pre "This is Read call #$N this session. You have used Read $N times instead of oracle_read. Each one adds hundreds of tokens to context that oracle_read would have served from cache. Use oracle_read for file reads — it returns full content on first call and compact deltas on repeats."
-    else
-        emit_pre "Read call #$N. You are consistently ignoring oracle_read. Every Read call bypasses the cache and wastes tokens. The oracle_read tool (mcp__project-oracle__oracle_read) does the same thing but tracks what you've seen. USE IT."
+_aylo_main() {
+    TOOL_INPUT=$(cat 2>/dev/null) || true
+    [[ -z "$TOOL_INPUT" ]] && exit 0
+
+    # Single jq call extracts everything we might need: tool_name, session_id,
+    # file_path, and presence flags for offset/limit. Tab-separated values are
+    # split by IFS read below. Each tab-separated cell is "-" when absent so
+    # bash can detect missing fields without ambiguity.
+    JQ_OUT=$(printf '%s' "$TOOL_INPUT" | jq -r '
+        [
+            .tool_name // "",
+            .session_id // "",
+            .tool_input.file_path // "",
+            (if (.tool_input | has("offset")) then "1" else "" end),
+            (if (.tool_input | has("limit")) then "1" else "" end)
+        ] | @tsv
+    ' 2>/dev/null) || exit 0
+
+    IFS=$'\t' read -r TOOL_NAME SESSION_ID FILE_PATH HAS_OFFSET HAS_LIMIT <<< "$JQ_OUT"
+    [[ -z "$TOOL_NAME" ]] && exit 0
+
+    # --- Grep: advisory only ---
+    if [[ "$TOOL_NAME" == "Grep" ]]; then
+        emit_advisory "Use oracle_grep (mcp__project-oracle__oracle_grep) instead of Grep. It returns the same results but caches them — repeated searches cost nothing."
+        exit 0
     fi
-    exit 0
-fi
 
-# --- Grep ---
-if [[ "$TOOL_NAME" == "Grep" ]]; then
-    N=$(get_count Grep)
-    set_count Grep "$N"
-    if (( N <= 2 )); then
-        emit_pre "STOP. Use oracle_grep (mcp__project-oracle__oracle_grep) instead of Grep. It returns the same results but caches them — if you search for the same pattern again, you get the answer instantly instead of re-scanning the codebase."
-    else
-        emit_pre "Grep call #$N. Use oracle_grep (mcp__project-oracle__oracle_grep). It caches results so repeated searches cost nothing."
+    # --- Bash: advisory only ---
+    if [[ "$TOOL_NAME" == "Bash" ]]; then
+        emit_advisory "Check: is this a test/lint/build command? If so, use oracle_run (mcp__project-oracle__oracle_run) instead — it caches results keyed by source file hashes. If the code hasn't changed since last run, you get the cached result instantly instead of waiting for the command to execute."
+        exit 0
     fi
-    exit 0
-fi
 
-# --- Bash ---
-if [[ "$TOOL_NAME" == "Bash" ]]; then
-    N=$(get_count Bash)
-    set_count Bash "$N"
-    if (( N <= 2 )); then
-        emit_pre "Check: is this a test/lint/build command? If so, use oracle_run (mcp__project-oracle__oracle_run) instead — it caches results keyed by source file hashes. If the code hasn't changed since last run, you get the cached result instantly instead of waiting for the command to execute."
-    else
-        emit_pre "Bash call #$N. For test/lint/build commands, oracle_run (mcp__project-oracle__oracle_run) returns cached results when source files haven't changed. Use it."
+    # --- Read: binary block on provably redundant reads ---
+    if [[ "$TOOL_NAME" != "Read" ]]; then
+        exit 0
     fi
-    exit 0
-fi
 
-exit 0
+    # No portable timer means we cannot enforce the SQLite query timeout, so
+    # the Read binary block is unavailable on this platform. Fail open
+    # silently — Bash and Grep advisories already ran above.
+    [[ -z "$TIMEOUT_CMD" ]] && exit 0
+
+    [[ -z "$SESSION_ID" ]] && exit 0
+    [[ -z "$FILE_PATH" ]] && exit 0
+
+    # Partial read (non-default offset or limit) → allow.
+    if [[ -n "$HAS_OFFSET" || -n "$HAS_LIMIT" ]]; then
+        exit 0
+    fi
+
+    # Resolve path (canonicalize symlinks). If realpath fails (worktree
+    # deleted, dangling symlink) → allow.
+    RESOLVED_PATH=$(realpath "$FILE_PATH" 2>/dev/null) || exit 0
+    [[ -z "$RESOLVED_PATH" ]] && exit 0
+
+    # Path must be inside a tracked project root.
+    PROJECT_ROOT=$(find_project_root "$RESOLVED_PATH") || exit 0
+    [[ -z "$PROJECT_ROOT" ]] && exit 0
+
+    DB_PATH=$(project_db_path "$PROJECT_ROOT")
+    [[ -f "$DB_PATH" ]] || exit 0
+
+    # Lookup cached disk_sha256 for (session_id, path) AND compute the on-disk
+    # SHA in parallel. Both are independent and the bottleneck is fork/exec
+    # overhead, so running shasum in the background while sqlite3 executes
+    # halves the serial cost on the hot path.
+    ESCAPED_SESSION=$(printf '%s' "$SESSION_ID" | sed "s/'/''/g")
+    ESCAPED_PATH=$(printf '%s' "$RESOLVED_PATH" | sed "s/'/''/g")
+    DISK_SHA_FILE=$(mktemp -t aylo-disk-sha.XXXXXX) || exit 0
+    trap 'rm -f "$DISK_SHA_FILE"' EXIT
+
+    (shasum -a 256 "$RESOLVED_PATH" 2>/dev/null | awk '{print $1}' > "$DISK_SHA_FILE") &
+    DISK_SHA_PID=$!
+
+    CACHED_SHA=$("$TIMEOUT_CMD" "$SQLITE_QUERY_TIMEOUT_S" sqlite3 \
+        -readonly \
+        -batch \
+        -noheader \
+        -list \
+        -cmd ".timeout $SQLITE_BUSY_TIMEOUT_MS" \
+        "$DB_PATH" \
+        "SELECT f.disk_sha256 FROM file_cache f JOIN session_files s ON s.path = f.path WHERE s.session_id = '$ESCAPED_SESSION' AND f.path = '$ESCAPED_PATH';" 2>/dev/null) || {
+        wait "$DISK_SHA_PID" 2>/dev/null || true
+        exit 0
+    }
+
+    wait "$DISK_SHA_PID" 2>/dev/null || true
+    DISK_SHA=$(<"$DISK_SHA_FILE")
+
+    [[ -z "$CACHED_SHA" || "$CACHED_SHA" == "NULL" ]] && exit 0
+    [[ -z "$DISK_SHA" ]] && exit 0
+
+    # Block iff cached disk SHA matches current on-disk SHA.
+    if [[ "$CACHED_SHA" == "$DISK_SHA" ]]; then
+        printf 'File unchanged since last read: %s\nThe agent already has this content from earlier in the session. Skip this Read; reuse the prior content. If the cached content was lost, use oracle_read for a compact delta.\n' \
+            "$RESOLVED_PATH" >&2
+        exit 2
+    fi
+
+    exit 0
+}
+
+# Run main logic only when executed directly. Sourcing the script (e.g., from
+# tests/test_project_hash_parity.py) loads the helper functions without firing
+# the hook's main pipeline.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    _aylo_main "$@"
+fi

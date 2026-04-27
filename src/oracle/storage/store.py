@@ -110,6 +110,13 @@ class OracleStore:
                 ts           INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS session_files (
+                session_id TEXT NOT NULL,
+                path       TEXT NOT NULL,
+                served_at  INTEGER NOT NULL,
+                PRIMARY KEY (session_id, path)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_file_cache_last_read ON file_cache(last_read);
             CREATE INDEX IF NOT EXISTS idx_agent_log_session ON agent_log(session_id);
             CREATE INDEX IF NOT EXISTS idx_command_results_ran ON command_results(ran_at);
@@ -439,6 +446,42 @@ class OracleStore:
         avg_hit = sum(hit_rates) / len(hit_rates) if hit_rates else 0.0
         avg_adoption = sum(adoption_rates) / len(adoption_rates) if adoption_rates else 0.0
         return avg_hit, avg_adoption
+
+    def record_session_file(self, session_id: str, path: str, served_at: int) -> None:
+        """Insert or refresh the (session_id, path) row in session_files."""
+        self._conn.execute(
+            """
+            INSERT INTO session_files (session_id, path, served_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(session_id, path) DO UPDATE SET served_at = excluded.served_at
+            """,
+            (session_id, path, served_at),
+        )
+        self._conn.commit()
+
+    def get_session_file_served_at(self, session_id: str, path: str) -> int | None:
+        """Return served_at for (session_id, path), or None if no row exists."""
+        row = self._conn.execute(
+            "SELECT served_at FROM session_files WHERE session_id = ? AND path = ?",
+            (session_id, path),
+        ).fetchone()
+        return None if row is None else int(row["served_at"])
+
+    def get_session_file_disk_sha256(self, session_id: str, path: str) -> str | None:
+        """Return file_cache.disk_sha256 only if (session_id, path) is in session_files."""
+        row = self._conn.execute(
+            """
+            SELECT f.disk_sha256
+            FROM file_cache f
+            JOIN session_files s ON s.path = f.path
+            WHERE s.session_id = ? AND f.path = ?
+            """,
+            (session_id, path),
+        ).fetchone()
+        if row is None:
+            return None
+        disk_sha = row["disk_sha256"]
+        return None if disk_sha is None else str(disk_sha)
 
     def evict_stale_files(self, max_age_days: int = 30, now: int | None = None) -> int:
         if now is None:

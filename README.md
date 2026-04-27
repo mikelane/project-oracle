@@ -53,7 +53,7 @@ Project Oracle (MCP server)
 | Layer | Mechanism | What it does |
 |-------|-----------|-------------|
 | **Passive learning** | PostToolUse hooks | When the agent uses built-in `Read`/`Grep`/`Bash`, hooks silently feed the results to Oracle's cache |
-| **Active nudging** | PreToolUse AYLO hooks | Before the agent re-reads a file, a question nudges it toward `oracle_read` instead |
+| **Binary blocking on Read** | PreToolUse hook | When the agent re-reads a file it already saw this session and the file is unchanged on disk, the hook exits 2 and the Read does not execute. Bash/Grep stay advisory. |
 | **Direct tools** | 7 MCP tools | `oracle_status`, `oracle_ask`, `oracle_run`, `oracle_read`, `oracle_grep`, `oracle_forget`, `oracle_stats` |
 
 State persists in per-project SQLite databases, so the agent picks up where it left off across sessions.
@@ -288,7 +288,8 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 ┌──────────────────────────────────────────────────┐
 │  Claude Code Hooks (run in parallel)             │
 │                                                  │
-│  PreToolUse: AYLO nudges → "use oracle instead"  │
+│  PreToolUse Read: binary block on redundant Read │
+│  PreToolUse Bash/Grep: advisory (additionalCtx)  │
 │  PostToolUse: passive ingest → feed to cache     │
 └──────────────────────────────────────────────────┘
 ```
@@ -435,7 +436,8 @@ features/
 ├── file_caching.feature      # BDD: file read/delta behavior
 ├── git_state.feature         # BDD: git status caching
 ├── command_caching.feature   # BDD: command result caching
-└── natural_language.feature  # BDD: oracle_ask routing
+├── natural_language.feature  # BDD: oracle_ask routing
+└── hooks.feature             # BDD: PreToolUse Read binary block
 ```
 
 ## License

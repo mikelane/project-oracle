@@ -77,7 +77,10 @@ def process_ingest(
         )
         builtin_logged += 1
 
-        # For Read entries, also populate the file cache
+        # For Read entries, record session_files only after we have
+        # successfully cached the file's content. The hook joins
+        # session_files to file_cache; a session_files row without a
+        # matching file_cache row is dead weight.
         if tool_name == "Read":
             if not resolved.is_file():
                 continue
@@ -88,6 +91,7 @@ def process_ingest(
                 continue
 
             project.file_cache.smart_read(str(resolved))
+            project.store.record_session_file(session_id, str(resolved), int(time.time()))
             populated += 1
 
     return IngestResult(cache_populated=populated, builtin_logged=builtin_logged)

@@ -7,6 +7,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -398,3 +400,90 @@ def step_then_no_matches(context):
     assert context.hook_source_matches == [], (
         f"Expected no matches, found: {context.hook_source_matches}"
     )
+
+
+@given("Oracle's MCP server is tracking the project")
+def step_mcp_tracking(context):
+    _setup_project(context)
+
+
+@given('session_files contains (the current session, "{rel_path}")')
+def step_session_files_contains_tuple(context, rel_path):
+    full = _make_file(context, rel_path)
+    content = Path(full).read_bytes()
+    sha = hashlib.sha256(content).hexdigest()
+    _write_file_cache(context, rel_path, content, sha)
+    _record_session(context, rel_path)
+
+
+@given('file_cache.disk_sha256 for "{rel_path}" matches its current on-disk SHA-256')
+def step_disk_sha_matches_current(context, rel_path):
+    step_disk_sha_matches(context, rel_path)
+
+
+@given("PATH contains gtimeout but NOT timeout")
+def step_path_has_gtimeout_only(context):
+    # The hook needs `timeout` or `gtimeout` to enforce its SQLite query
+    # timeout. To exercise the gtimeout fallback hermetically without
+    # depending on the host's coreutils, build an isolated PATH that:
+    #   1. Symlinks the helpers the hook needs (jq, sqlite3, shasum, etc.)
+    #   2. Does NOT include `timeout`
+    #   3. DOES include a `gtimeout` shim that execs the host's actual
+    #      timeout-like binary by absolute path (so the hook's
+    #      `command -v gtimeout` succeeds and the resulting invocation
+    #      really enforces a timeout).
+    # If the host has neither `timeout` nor `gtimeout`, skip — there's no
+    # way to make a working shim and the scenario can't be exercised.
+    host_timeout = shutil.which("timeout") or shutil.which("gtimeout")
+    if host_timeout is None:
+        context.scenario.skip(
+            reason="Host has neither `timeout` nor `gtimeout`; gtimeout shim has nothing to exec."
+        )
+        return
+
+    isolated = context.tmp_dir / "gtimeout-only-bin"
+    isolated.mkdir(exist_ok=True)
+    helpers = [
+        "jq",
+        "sqlite3",
+        "shasum",
+        "awk",
+        "sed",
+        "mktemp",
+        "realpath",
+        "dirname",
+        "printf",
+        "cat",
+        "bash",
+        "head",
+        "rm",
+    ]
+    seen: set[str] = set()
+    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+        if not path_dir:
+            continue
+        for helper in helpers:
+            if helper in seen:
+                continue
+            candidate = Path(path_dir) / helper
+            if candidate.exists():
+                link = isolated / helper
+                if not link.exists():
+                    link.symlink_to(candidate)
+                seen.add(helper)
+
+    # gtimeout shim: exec the host's real timeout binary by absolute path.
+    # The hook will detect this via `command -v gtimeout` and invoke it
+    # exactly like the GNU `timeout` it stands in for.
+    gtimeout_shim = isolated / "gtimeout"
+    gtimeout_shim.write_text(f'#!/bin/bash\nexec "{host_timeout}" "$@"\n')
+    gtimeout_shim.chmod(gtimeout_shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    # Crucially, do NOT symlink `timeout` itself — the hook must fall
+    # through to the gtimeout branch.
+    context.hook_path_override = str(isolated)
+
+
+@when('the agent calls Read with file_path "{rel_path}" and no offset/limit')
+def step_when_agent_calls_read(context, rel_path):
+    step_when_read_no_partial(context, rel_path)

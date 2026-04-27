@@ -124,6 +124,16 @@ Feature: PreToolUse hook blocks only provably redundant Reads in the current ses
     And stderr is empty
 
   @ISSUE-13
+  Scenario: gtimeout-only PATH still fires the binary block
+    Given Oracle's MCP server is tracking the project
+    And session_files contains (the current session, "src/foo.py")
+    And file_cache.disk_sha256 for "src/foo.py" matches its current on-disk SHA-256
+    And PATH contains gtimeout but NOT timeout
+    When the agent calls Read with file_path "src/foo.py" and no offset/limit
+    Then the hook exits with code 2
+    And stderr contains "File unchanged since last read"
+
+  @ISSUE-13
   Scenario: Hook source explicitly detects timeout/gtimeout availability
     When inspecting the hook source for the timeout fallback
     Then the hook source declares both "timeout" and "gtimeout" as candidates
